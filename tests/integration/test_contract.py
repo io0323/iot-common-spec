@@ -141,3 +141,13 @@ async def test_broken_app_makes_random_schedule_request_id(
     print(format_results(list(results.values())))
     assert results["schedule_request_id"].status == "failed"
     assert any("決定的な request_id" in f.message for f in results["schedule_request_id"].failures)
+
+
+async def test_mcu_c_01_contract_needs_no_broker() -> None:
+    """作品01（UART だけ）の契約テストは、ブローカーに接続できなくても行える。"""
+    unreachable = BrokerAddress("127.0.0.1", 1)
+    results = await run_contract(
+        "mcu-c-01", unreachable, standin_target("mcu-c-01"), only=["ack", "frame_encoding"]
+    )
+    print(format_results(results))
+    assert [r.status for r in results] == ["passed", "passed"]

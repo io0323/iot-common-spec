@@ -316,14 +316,18 @@ class ContractContext:
     def topic(self, device_id: str, kind: str) -> str:
         return TOPIC_FORMAT.format(site=self.site, device_id=device_id, kind=kind)
 
-    async def open(self, *, uart: bool) -> None:
-        """観測と UART の相手役を用意する（対象を起動する前に呼ぶ）。"""
+    async def open(self, *, uart: bool, mqtt: bool = True) -> None:
+        """観測と UART の相手役を用意する（対象を起動する前に呼ぶ）。
+
+        mqtt=False なら MQTT には接続しない（UART だけの作品01はブローカーなしで行える）。
+        """
         self.started_at = time.monotonic()
-        observer = await self._stack.enter_async_context(
-            client_for(self.broker, OBSERVER_USER, unique=True)
-        )
-        await observer.subscribe(f"iot/v1/{self.site}/#", qos=1)
-        self._tasks.append(asyncio.create_task(self._collect(observer)))
+        if mqtt:
+            observer = await self._stack.enter_async_context(
+                client_for(self.broker, OBSERVER_USER, unique=True)
+            )
+            await observer.subscribe(f"iot/v1/{self.site}/#", qos=1)
+            self._tasks.append(asyncio.create_task(self._collect(observer)))
         if uart:
             if self.uart_path:
                 link: SerialLink = DevicePort(self.uart_path)

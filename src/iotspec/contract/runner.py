@@ -17,6 +17,8 @@ from iotspec.sim.simulation import Simulation
 __all__ = ["UART_ROLES", "run_contract", "standin_target"]
 
 UART_ROLES = frozenset({"mcu-c-01", "gw-01"})
+MQTT_ROLES = frozenset({"mcu-cpp-01", "gw-01", "app-01"})
+"""ブローカーが要る role（作品01は UART だけなので要らない）。"""
 STANDIN_DURATION_S = 3600
 
 
@@ -43,7 +45,7 @@ async def run_contract(
         options=dict(options or {}),
     )
     try:
-        await ctx.open(uart=role in UART_ROLES)
+        await ctx.open(uart=role in UART_ROLES, mqtt=role in MQTT_ROLES)
         await target.start(ctx)
         return await run_checks(ctx, role, only)
     finally:

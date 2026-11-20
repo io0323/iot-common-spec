@@ -52,6 +52,7 @@ iotspec-contract --role <role> --list      # チェックの一覧
 ### 作品01（`--role mcu-c-01`）：UART
 
 相手役は作品03（UART の上位）。契約テストが1秒ごとに HEARTBEAT を送り、CMD を送ります。
+この role は UART だけを使うので、**MQTT ブローカーは要りません**（Mosquitto を起動しなくても実行できます）。
 
 | チェック | 内容 |
 |---|---|
