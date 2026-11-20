@@ -58,7 +58,7 @@ class Observer:
 @asynccontextmanager
 async def observing(broker: BrokerAddress, topic: str = "iot/#") -> AsyncIterator[Observer]:
     observer = Observer()
-    async with client_for(broker, OBSERVER) as client:
+    async with client_for(broker, OBSERVER, unique=True) as client:
         await client.subscribe(topic, qos=1)
 
         async def collect() -> None:

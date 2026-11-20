@@ -118,3 +118,28 @@ async def test_checks_needing_target_control_are_skipped() -> None:
 def test_goldens_are_available_for_gw_contract() -> None:
     names = {g["name"] for g in goldens()}
     assert {"state_boot", "event_upstream_restored", "telemetry_seq_wrapped"} <= names
+
+
+@pytest.mark.parametrize("role", ROLES)
+def test_cli_lists_checks_in_a_fresh_interpreter(role: str) -> None:
+    """CLI と同じく、ほかに何も読み込んでいない状態でもチェックが登録されている。"""
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; from iotspec.contract.cli import main; sys.exit(main(sys.argv[1:]))",
+            "--role",
+            role,
+            "--list",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    listed = [line.split(":", 1)[0] for line in result.stdout.splitlines() if line]
+    assert listed == [item.name for item in checks_for(role)]
+    assert len(listed) >= 4

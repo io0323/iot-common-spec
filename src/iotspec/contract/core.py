@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import importlib
 import time
 import traceback
 import xml.etree.ElementTree as ET
@@ -125,7 +126,8 @@ def check(
 
 def checks_for(role: str) -> list[Check]:
     """role のチェック（共通チェックを含む）を実行順に返す。"""
-
+    # role ごとのモジュールを読み込むと、@check でチェックが登録される
+    importlib.import_module("iotspec.contract.roles")
     selected = [c for c in _REGISTRY if c.role in (role, "common")]
     if role == "mcu-c-01":  # UART だけのデバイスには MQTT の共通チェックを当てない
         selected = [c for c in selected if c.role == role]

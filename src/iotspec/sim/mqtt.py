@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
+import secrets
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
@@ -75,16 +76,25 @@ def broker_from_env() -> BrokerAddress:
 
 
 def client_for(
-    broker: BrokerAddress, device_id: str, will: Outgoing | None = None
+    broker: BrokerAddress,
+    device_id: str,
+    will: Outgoing | None = None,
+    *,
+    unique: bool = False,
 ) -> aiomqtt.Client:
-    """device_id の名義で接続する aiomqtt.Client（テストの観測用にも使う）。"""
+    """device_id の名義で接続する aiomqtt.Client（テストの観測用にも使う）。
+
+    client id は device_id。unique=True なら乱数を付ける（同じ名義で同時に複数つなぐ観測用。
+    MQTT は同じ client id の接続を1つしか許さず、後からの接続が前の接続を切ってしまう）。
+    """
     username, password = broker.credentials_for(device_id)
+    identifier = f"{device_id}-{secrets.token_hex(4)}" if unique else device_id
     return aiomqtt.Client(
         hostname=broker.host,
         port=broker.port,
         username=username,
         password=password,
-        identifier=device_id,
+        identifier=identifier,
         will=(
             None
             if will is None

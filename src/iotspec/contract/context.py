@@ -319,7 +319,9 @@ class ContractContext:
     async def open(self, *, uart: bool) -> None:
         """観測と UART の相手役を用意する（対象を起動する前に呼ぶ）。"""
         self.started_at = time.monotonic()
-        observer = await self._stack.enter_async_context(client_for(self.broker, OBSERVER_USER))
+        observer = await self._stack.enter_async_context(
+            client_for(self.broker, OBSERVER_USER, unique=True)
+        )
         await observer.subscribe(f"iot/v1/{self.site}/#", qos=1)
         self._tasks.append(asyncio.create_task(self._collect(observer)))
         if uart:
@@ -372,7 +374,7 @@ class ContractContext:
 
     async def retained(self, topic: str, timeout: float = 2.0) -> dict[str, Any] | None:
         """新しく購読して retain されている電文を読む。"""
-        async with client_for(self.broker, OBSERVER_USER) as client:
+        async with client_for(self.broker, OBSERVER_USER, unique=True) as client:
             await client.subscribe(topic, qos=1)
             try:
                 async with asyncio.timeout(timeout):
