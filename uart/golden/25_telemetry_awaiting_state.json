@@ -1,6 +1,6 @@
 {
   "name": "telemetry_awaiting_state",
-  "order": 24,
+  "order": 25,
   "direction": "01->03",
   "description": "STATE 待ちの TELEMETRY も破棄（破棄件数を数える）",
   "frame": {
@@ -14,7 +14,7 @@
     "fan_pm": 0
   },
   "hex": "03 01 01 04 0a 1a 04 01 03 6a 09 02 01 01 03 bb 4f 00",
-  "received_at": "2026-11-20T06:00:12.000Z",
+  "received_at": "2026-11-20T06:00:12.500Z",
   "expected": {
     "envelope": null,
     "discarded": "awaiting_state",

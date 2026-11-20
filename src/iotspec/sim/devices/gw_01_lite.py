@@ -107,7 +107,11 @@ class Gw01Lite:
         self.stats: Counter[str] = Counter()
         self.requests: dict[str, RequestRecord] = {}
         self.cmds: dict[str, CmdRecord] = {}
-        self.bridge = UartBridge(uart_profile, clock) if uart_profile is not None else None
+        self.bridge = (
+            UartBridge(uart_profile, clock, bridged_by=self.device_id)
+            if uart_profile is not None
+            else None
+        )
         self._uart_rx = bytearray()
         self._queue: deque[CmdRecord] = deque()
         self._in_flight: dict[int, CmdRecord] = {}
@@ -353,6 +357,17 @@ class Gw01Lite:
                     "detail": {"device_id": self.bridge.profile.device_id},
                 },
             )
+            # UART デバイス名義の offline の state（retain、bridged_by 付き。#36）
+            offline = self.bridge.offline_state()
+            if offline is not None:
+                self.outbox.append(
+                    Outgoing(
+                        self.topic(KIND_STATE, offline.device_id),
+                        offline.to_dict(),
+                        QOS_BY_KIND[KIND_STATE],
+                        True,
+                    )
+                )
         self._send_uart_cmds(now)
 
     def _cmd_slot_free(self, now: datetime) -> bool:

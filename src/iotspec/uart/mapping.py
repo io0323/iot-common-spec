@@ -70,6 +70,7 @@ EVENT_CODE: Final = ValueTable(
         5: "SENSOR_FAULT",
         6: "SENSOR_RECOVERED",
         7: "UPSTREAM_LOST",
+        8: "UPSTREAM_RESTORED",  # v0.2.1 #34
     },
 )
 SEVERITY: Final = ValueTable("severity", {0: "info", 1: "warning", 2: "critical"})

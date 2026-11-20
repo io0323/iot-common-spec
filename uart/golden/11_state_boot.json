@@ -40,7 +40,8 @@
             "max_on_s": null
           }
         ],
-        "fw_version": "1.2"
+        "fw_version": "1.2",
+        "bridged_by": "gw-01"
       }
     },
     "discarded": null,

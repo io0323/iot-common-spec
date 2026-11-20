@@ -439,3 +439,40 @@ def test_type_specific_options_are_checked() -> None:
         parse_scenario(base)
     assert any(e.startswith("/devices/0/requests/0") for e in info.value.errors)
     _ = timedelta
+
+
+# ---------------------------------------------------------------- #34・#36
+
+
+def test_mcu_sends_upstream_restored_when_heartbeat_returns() -> None:
+    mcu, clock, _ = _mcu()
+    mcu.start()
+    for _ in range(c.UART_UPSTREAM_LOST_S):
+        clock.advance(1)
+        mcu.tick()
+    assert mcu.upstream_lost
+    mcu.feed(encode_frame(Heartbeat(0, 0)))
+    mcu.feed(encode_frame(Heartbeat(1, 1)))
+    codes = [f.code for f in mcu.sent if isinstance(f, Event)]
+    assert codes[-2:] == [7, 8]  # UPSTREAM_LOST、UPSTREAM_RESTORED（1回だけ）
+
+
+def test_gw_publishes_offline_state_with_bridged_by_after_uart_silence() -> None:
+    from iotspec.dedup import exempt_from_seq_checks
+
+    gw, clock = _gw()
+    gw.feed_uart(encode_frame(State(0, 0x0102, 0x01020304, 1000)))
+    (online,) = [o for o in gw.drain() if o.kind == c.KIND_STATE]
+    assert online.message["payload"]["bridged_by"] == c.DEVICE_GW_01  # type: ignore[index]
+    for _ in range(c.UART_HEARTBEAT_LOSS_S):
+        clock.advance(1)
+        gw.tick()
+    states = [o for o in gw.drain() if o.kind == c.KIND_STATE]
+    (offline,) = states
+    assert offline.topic == f"iot/v1/{c.DEFAULT_SITE}/{c.DEVICE_MCU_C_01}/state"
+    assert offline.retain is True
+    payload = offline.message["payload"]
+    assert payload["status"] == "offline" and payload["bridged_by"] == c.DEVICE_GW_01  # type: ignore[index]
+    assert offline.message["boot_id"] == "01020304"
+    assert offline.message["seq"] == online.message["seq"] + 1  # type: ignore[operator]
+    assert validate(offline.message) == [] and exempt_from_seq_checks(offline.message)

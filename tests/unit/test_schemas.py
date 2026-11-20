@@ -49,6 +49,7 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "event__missing_code": ("/payload", "required"),
     "event__detail_not_object": ("/payload/detail", "type"),
     "state__bad_status": ("/payload/status", "enum"),
+    "state__bad_bridged_by": ("/payload/bridged_by", "pattern"),
     "state__missing_channels": ("/payload", "required"),
     "state__missing_actuators": ("/payload", "required"),
     "state__channel_unknown_unit": ("/payload/channels/0/unit", "enum"),

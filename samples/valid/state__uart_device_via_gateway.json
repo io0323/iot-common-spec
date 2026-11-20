@@ -25,6 +25,7 @@
         "max_on_s": null
       }
     ],
-    "fw_version": "258"
+    "fw_version": "258",
+    "bridged_by": "gw-01"
   }
 }

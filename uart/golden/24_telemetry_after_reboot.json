@@ -1,6 +1,6 @@
 {
   "name": "telemetry_after_reboot",
-  "order": 23,
+  "order": 24,
   "direction": "01->03",
   "description": "uptime_ms の減少 → 再起動と判定。STATE を求め、TELEMETRY は変換せず破棄",
   "frame": {
@@ -14,7 +14,7 @@
     "fan_pm": 0
   },
   "hex": "02 01 01 03 0a 32 01 01 03 60 09 01 01 01 03 43 54 00",
-  "received_at": "2026-11-20T06:00:11.500Z",
+  "received_at": "2026-11-20T06:00:12.000Z",
   "expected": {
     "envelope": null,
     "discarded": "awaiting_state",

@@ -1,6 +1,6 @@
 {
   "name": "telemetry_crc_mismatch",
-  "order": 22,
+  "order": 23,
   "direction": "01->03",
   "description": "壊れたフレーム：CRC 不一致 → 破棄",
   "frame": {
@@ -14,7 +14,7 @@
     "fan_pm": 0
   },
   "hex": "03 01 01 08 0a ff ff ff ff 28 0a 02 01 01 03 79 0c 00",
-  "received_at": "2026-11-20T06:00:11.000Z",
+  "received_at": "2026-11-20T06:00:11.500Z",
   "expected": {
     "envelope": null,
     "discarded": "crc_mismatch",
