@@ -6,6 +6,7 @@ COPY src ./src
 COPY schemas ./schemas
 COPY profiles ./profiles
 COPY sim ./sim
+COPY uart ./uart
 RUN uv sync --locked --no-dev
 ENV PATH="/app/.venv/bin:$PATH"
 ENTRYPOINT ["iotspec-sim"]

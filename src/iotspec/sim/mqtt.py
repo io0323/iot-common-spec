@@ -94,6 +94,14 @@ def client_for(
     )
 
 
+def _abort(client: aiomqtt.Client) -> None:
+    """DISCONNECT を送らずにソケットを閉じる。"""
+    sock = client._client.socket()  # aiomqtt には接続を切るだけの公開の手段がない
+    if sock is not None:
+        with contextlib.suppress(OSError):
+            sock.close()
+
+
 async def _publish(client: aiomqtt.Client, items: list[Outgoing]) -> None:
     for item in items:
         await client.publish(item.topic, item.payload(), qos=item.qos, retain=item.retain)
@@ -126,8 +134,14 @@ def _open_uart(simulation: Simulation, stack: contextlib.ExitStack) -> list[tupl
     return links
 
 
-async def run_over_mqtt(simulation: Simulation, broker: BrokerAddress) -> None:
-    """シミュレーションを最後まで流し、MQTT と仮想シリアルでやり取りする。"""
+async def run_over_mqtt(
+    simulation: Simulation, broker: BrokerAddress, *, kill: asyncio.Event | None = None
+) -> None:
+    """シミュレーションを最後まで流し、MQTT と仮想シリアルでやり取りする。
+
+    kill を渡すと、それがセットされた時点で DISCONNECT を送らずに接続を切って終わる
+    （電源断やネットワーク断と同じで、ブローカーは LWT を発行する。契約テストの LWT の確認用）。
+    """
     simulation.schedule()
     mqtt_devices: list[MqttDevice] = simulation.mqtt_devices
     with contextlib.ExitStack() as sync_stack:
@@ -175,13 +189,26 @@ async def run_over_mqtt(simulation: Simulation, broker: BrokerAddress) -> None:
                 for d in mqtt_devices
                 if d.subscriptions()
             ]
+            end = simulation.scenario.end
+            runner = asyncio.create_task(simulation.runtime.run_until_async(end, after_step=flush))
+            killer = asyncio.create_task(kill.wait()) if kill is not None else None
             try:
-                end = simulation.scenario.end
-                await simulation.runtime.run_until_async(end, after_step=flush)
+                waiting = {runner} if killer is None else {runner, killer}
+                await asyncio.wait(waiting, return_when=asyncio.FIRST_COMPLETED)
+                if killer is not None and killer.done():
+                    runner.cancel()
+                    await asyncio.gather(runner, return_exceptions=True)
+                    for remove in removers:
+                        remove()
+                    for client in clients.values():
+                        _abort(client)
+                    stack.pop_all()  # 切った接続には DISCONNECT を送らない
+                    return
+                runner.result()
                 await flush()
                 for device in mqtt_devices:
                     await _publish(clients[device.device_id], [device.shutdown()])
             finally:
-                for task in receivers:
+                for task in [*receivers, *([killer] if killer is not None else [])]:
                     task.cancel()
                 await asyncio.gather(*receivers, return_exceptions=True)

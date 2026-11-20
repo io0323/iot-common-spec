@@ -476,3 +476,34 @@ def test_gw_publishes_offline_state_with_bridged_by_after_uart_silence() -> None
     assert offline.message["boot_id"] == "01020304"
     assert offline.message["seq"] == online.message["seq"] + 1  # type: ignore[operator]
     assert validate(offline.message) == [] and exempt_from_seq_checks(offline.message)
+
+
+def test_gw_turns_request_for_uart_device_into_cmd_and_reports_result() -> None:
+    """UART デバイス宛ての request は CMD に変わり、ACK で request の最終結果が決まる。"""
+    gw, clock = _gw()
+    app = App01(load_profile(c.DEVICE_APP_01), clock, site=c.DEFAULT_SITE)
+    state = app.request(
+        {
+            "kind": "manual",
+            "target": c.DEVICE_MCU_C_01,
+            "op": "set_actuator",
+            "args": {"id": "fan_main", "level": 450},
+            "lease_s": 30,
+        }
+    )
+    (sent,) = [o for o in app.drain() if o.kind == c.KIND_REQUEST]
+    gw.handle_message(sent.topic, sent.payload())
+    for out in gw.drain():
+        app.handle_message(out.topic, out.payload())
+    assert state.status == "accepted"
+    gw.feed_uart(encode_frame(State(0, 0x0102, 1, 1000)))
+    clock.advance(1)
+    gw.tick()
+    (cmd,) = _cmds(gw.drain_uart())
+    assert cmd.op == c.UART_OP_SET_FAN_OVERRIDE and cmd.args == (450,) and cmd.ttl_s == 30
+    gw.feed_uart(encode_frame(Ack(0, cmd.cmd_ref, 1, 0, 0, 450)))
+    for out in gw.drain():
+        if out.kind == c.KIND_REQUEST_ACK:
+            app.handle_message(out.topic, out.payload())
+    assert state.status == "done"
+    assert state.acks[0]["cmd_id"] == state.acks[-1]["cmd_id"]
