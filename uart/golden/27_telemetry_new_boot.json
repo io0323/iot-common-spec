@@ -1,6 +1,6 @@
 {
   "name": "telemetry_new_boot",
-  "order": 26,
+  "order": 27,
   "direction": "01->03",
   "description": "新しい boot_id での TELEMETRY",
   "frame": {
@@ -14,15 +14,15 @@
     "fan_pm": 250
   },
   "hex": "03 01 02 04 0a 02 08 01 03 74 09 03 01 fa 03 fe 8d 00",
-  "received_at": "2026-11-20T06:00:13.000Z",
+  "received_at": "2026-11-20T06:00:13.500Z",
   "expected": {
     "envelope": {
       "schema": "iot.v1.telemetry",
-      "msg_id": "01M7VRN1E8000000000000000B",
+      "msg_id": "01M7VRN1XW000000000000000C",
       "device_id": "mcu-c-01",
       "seq": 2,
       "boot_id": "00000001",
-      "ts": "2026-11-20T06:00:13.000Z",
+      "ts": "2026-11-20T06:00:13.500Z",
       "ts_source": "gateway",
       "uptime_ms": 2050,
       "payload": {

@@ -36,7 +36,7 @@ async def test_normal_day_over_mqtt_conforms_and_seq_is_consecutive(broker: Brok
     boot_id = simulation.devices[DEVICE_MCU_CPP_01].boot_id
     received: list[dict[str, Any]] = []
 
-    async with client_for(broker, "observer") as observer:
+    async with client_for(broker, "observer", unique=True) as observer:
         await observer.subscribe(f"iot/v1/{DEFAULT_SITE}/{DEVICE_MCU_CPP_01}/#", qos=1)
 
         async def collect() -> None:

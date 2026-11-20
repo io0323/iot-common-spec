@@ -145,11 +145,14 @@ class UartBridge:
         profile: Profile,
         clock: Clock,
         new_id: Callable[[], str] | None = None,
+        bridged_by: str | None = None,
     ) -> None:
         if profile.transport != "uart":
             raise ValueError(f"UART のプロファイルではない: {profile.device_id}")
         self.profile = profile
         self.clock = clock
+        self.bridged_by = bridged_by
+        """state に付ける bridged_by（変換する作品03の device_id。v0.2.1 #36）。"""
         self._new_id = new_id if new_id is not None else (lambda: new_ulid(clock))
         self.boot_id: str | None = None
         self.mode: str = UART_INITIAL_DEVICE_STATE
@@ -167,6 +170,8 @@ class UartBridge:
         self._reboot_detected = False
         self._state_requested = False
         self._tx_seq: dict[int, int] = {}
+        self._period_ms: int | None = None
+        self._fw_version = "0.0"
         self._cmd_table: dict[int, tuple[str, int]] = {}
 
     # ------------------------------------------------------------ 受信（01 → 03）
@@ -229,20 +234,42 @@ class UartBridge:
         self._state_requested = False
         self._last_uptime = None
         seq = self._extend(frame.TYPE, "STATE", frame.seq)
-        payload = {
-            "status": "online",
+        self._period_ms = frame.period_ms
+        self._fw_version = format_fw_version(frame.fw_version)
+        payload = self._state_payload("online")
+        return self._emit(self._envelope(KIND_STATE, seq, payload, None), False)
+
+    def _state_payload(self, status: str) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "status": status,
             "mode": self.mode,
             "channels": [
-                {"channel": c.channel, "unit": c.unit, "period_ms": frame.period_ms}
+                {"channel": c.channel, "unit": c.unit, "period_ms": self._period_ms or c.period_ms}
                 for c in self.profile.channels
             ],
             "actuators": [
                 {"id": a.id, "min": a.min, "max": a.max, "max_on_s": a.max_on_s}
                 for a in self.profile.actuators
             ],
-            "fw_version": format_fw_version(frame.fw_version),
+            "fw_version": self._fw_version,
         }
-        return self._emit(self._envelope(KIND_STATE, seq, payload, None), False)
+        if self.bridged_by is not None:
+            payload["bridged_by"] = self.bridged_by
+        return payload
+
+    def offline_state(self) -> Envelope | None:
+        """UART デバイスの HEARTBEAT が途絶えたときに作品03が発行する offline の state（#36）。
+
+        retain で発行する。seq は進めず次の値を入れる（#29：受信側は seq の判定から外す）。
+        STATE をまだ受けていない（boot_id が分からない）ときは None。
+        """
+        if self.boot_id is None:
+            return None
+        seq = self._rx_last.get(State.TYPE, -1) + 1
+        envelope = self._envelope(
+            KIND_STATE, seq & UINT32_MAX, self._state_payload("offline"), None
+        )
+        return envelope if not validate(envelope.to_dict()) else None
 
     def _telemetry(self, frame: Telemetry, seq: int) -> Envelope:
         device_state = self.profile.state_name(frame.state)

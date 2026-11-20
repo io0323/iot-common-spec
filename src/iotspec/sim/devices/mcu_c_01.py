@@ -5,7 +5,8 @@
   STATE は以後60秒ごとにも送る（第7章、#23）
 - UART の seq は方向・フレーム種別ごとの連番（#25）
 - CMD に ACK を返す。直近16件の cmd_ref には前回の ACK を返す
-- 上位の HEARTBEAT が10秒途絶えたら手動指定（SET_FAN_OVERRIDE）を解除し、UPSTREAM_LOST を送る
+- 上位の HEARTBEAT が10秒途絶えたら手動指定（SET_FAN_OVERRIDE）を解除し、UPSTREAM_LOST を送る。
+  HEARTBEAT が戻ったら UPSTREAM_RESTORED（EVENT code 8、#34）を送る
 - 状態：INIT・NORMAL・WARNING・CRITICAL・SENSOR_FAULT（profiles/mcu-c-01.yaml）
 
 通信は持たない。送るバイト列は tx に積み、受けたバイト列は feed で渡す。時刻は Clock から取る。
@@ -227,7 +228,9 @@ class McuC01:
                 self.stats[f"discarded:{frame.reason}"] += 1
             elif isinstance(frame, Heartbeat):
                 self._last_upstream = self.clock.now()
-                self.upstream_lost = False
+                if self.upstream_lost:
+                    self.upstream_lost = False
+                    self._send_event("UPSTREAM_RESTORED", "info", self.state, self.state)
             elif isinstance(frame, Cmd):
                 self._on_cmd(frame)
             else:

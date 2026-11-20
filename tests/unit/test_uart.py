@@ -582,7 +582,12 @@ def test_golden_session_replays_through_a_fresh_bridge() -> None:
     goldens = _goldens()
     clock = VirtualClock(T0)
     pending: list[str] = []
-    bridge = UartBridge(load_profile(c.DEVICE_MCU_C_01), clock, new_id=lambda: pending.pop())
+    bridge = UartBridge(
+        load_profile(c.DEVICE_MCU_C_01),
+        clock,
+        new_id=lambda: pending.pop(),
+        bridged_by=c.DEVICE_GW_01,
+    )
     for g in goldens:
         frame = g["frame"]
         if g["direction"] == "03->01":

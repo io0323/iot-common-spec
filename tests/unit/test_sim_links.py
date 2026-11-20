@@ -439,3 +439,71 @@ def test_type_specific_options_are_checked() -> None:
         parse_scenario(base)
     assert any(e.startswith("/devices/0/requests/0") for e in info.value.errors)
     _ = timedelta
+
+
+# ---------------------------------------------------------------- #34・#36
+
+
+def test_mcu_sends_upstream_restored_when_heartbeat_returns() -> None:
+    mcu, clock, _ = _mcu()
+    mcu.start()
+    for _ in range(c.UART_UPSTREAM_LOST_S):
+        clock.advance(1)
+        mcu.tick()
+    assert mcu.upstream_lost
+    mcu.feed(encode_frame(Heartbeat(0, 0)))
+    mcu.feed(encode_frame(Heartbeat(1, 1)))
+    codes = [f.code for f in mcu.sent if isinstance(f, Event)]
+    assert codes[-2:] == [7, 8]  # UPSTREAM_LOST、UPSTREAM_RESTORED（1回だけ）
+
+
+def test_gw_publishes_offline_state_with_bridged_by_after_uart_silence() -> None:
+    from iotspec.dedup import exempt_from_seq_checks
+
+    gw, clock = _gw()
+    gw.feed_uart(encode_frame(State(0, 0x0102, 0x01020304, 1000)))
+    (online,) = [o for o in gw.drain() if o.kind == c.KIND_STATE]
+    assert online.message["payload"]["bridged_by"] == c.DEVICE_GW_01  # type: ignore[index]
+    for _ in range(c.UART_HEARTBEAT_LOSS_S):
+        clock.advance(1)
+        gw.tick()
+    states = [o for o in gw.drain() if o.kind == c.KIND_STATE]
+    (offline,) = states
+    assert offline.topic == f"iot/v1/{c.DEFAULT_SITE}/{c.DEVICE_MCU_C_01}/state"
+    assert offline.retain is True
+    payload = offline.message["payload"]
+    assert payload["status"] == "offline" and payload["bridged_by"] == c.DEVICE_GW_01  # type: ignore[index]
+    assert offline.message["boot_id"] == "01020304"
+    assert offline.message["seq"] == online.message["seq"] + 1  # type: ignore[operator]
+    assert validate(offline.message) == [] and exempt_from_seq_checks(offline.message)
+
+
+def test_gw_turns_request_for_uart_device_into_cmd_and_reports_result() -> None:
+    """UART デバイス宛ての request は CMD に変わり、ACK で request の最終結果が決まる。"""
+    gw, clock = _gw()
+    app = App01(load_profile(c.DEVICE_APP_01), clock, site=c.DEFAULT_SITE)
+    state = app.request(
+        {
+            "kind": "manual",
+            "target": c.DEVICE_MCU_C_01,
+            "op": "set_actuator",
+            "args": {"id": "fan_main", "level": 450},
+            "lease_s": 30,
+        }
+    )
+    (sent,) = [o for o in app.drain() if o.kind == c.KIND_REQUEST]
+    gw.handle_message(sent.topic, sent.payload())
+    for out in gw.drain():
+        app.handle_message(out.topic, out.payload())
+    assert state.status == "accepted"
+    gw.feed_uart(encode_frame(State(0, 0x0102, 1, 1000)))
+    clock.advance(1)
+    gw.tick()
+    (cmd,) = _cmds(gw.drain_uart())
+    assert cmd.op == c.UART_OP_SET_FAN_OVERRIDE and cmd.args == (450,) and cmd.ttl_s == 30
+    gw.feed_uart(encode_frame(Ack(0, cmd.cmd_ref, 1, 0, 0, 450)))
+    for out in gw.drain():
+        if out.kind == c.KIND_REQUEST_ACK:
+            app.handle_message(out.topic, out.payload())
+    assert state.status == "done"
+    assert state.acks[0]["cmd_id"] == state.acks[-1]["cmd_id"]

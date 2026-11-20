@@ -67,6 +67,8 @@ class CmdRecord:
     ack: dict[str, Any] | None = None
     timed_out: bool = False
     repeat: int = 0
+    request_id: str | None = None
+    """この指令を生んだ request（app-01 の要求を UART の指令に変えた場合）。"""
 
 
 @dataclass
@@ -107,7 +109,11 @@ class Gw01Lite:
         self.stats: Counter[str] = Counter()
         self.requests: dict[str, RequestRecord] = {}
         self.cmds: dict[str, CmdRecord] = {}
-        self.bridge = UartBridge(uart_profile, clock) if uart_profile is not None else None
+        self.bridge = (
+            UartBridge(uart_profile, clock, bridged_by=self.device_id)
+            if uart_profile is not None
+            else None
+        )
         self._uart_rx = bytearray()
         self._queue: deque[CmdRecord] = deque()
         self._in_flight: dict[int, CmdRecord] = {}
@@ -213,6 +219,8 @@ class Gw01Lite:
             if "actuator" in rule and rule["actuator"] != args.get("id"):
                 continue
             return rule
+        if self.bridge is not None and request["target"] == self.bridge.profile.device_id:
+            return {"result": "uart"}
         return {"result": "done"}
 
     def _on_request(self, request: Mapping[str, Any]) -> None:
@@ -232,6 +240,14 @@ class Gw01Lite:
             return
         if record.result == "rejected":
             record.status = "rejected"
+        elif record.result == "uart":
+            # UART のデバイス宛て：作品03と同じく指令に変えて送り、ACK で最終結果を返す
+            payload = {k: request[k] for k in ("op", "args", "lease_s") if k in request}
+            payload["priority"] = "schedule" if request["kind"] == "schedule" else "manual"
+            cmd = self.submit_uart(payload)
+            cmd.request_id = request_id
+            record.status = "accepted"
+            record.cmd_id = cmd.cmd_id
         else:
             record.status = "accepted"
             record.cmd_id = new_ulid(self.clock)
@@ -327,6 +343,27 @@ class Gw01Lite:
         record.ack = dict(ack)
         if record.cmd_ref is not None:
             self._in_flight.pop(record.cmd_ref, None)
+        self._finish_request(record)
+
+    def _finish_request(self, cmd: CmdRecord) -> None:
+        """UART の指令の結果を、元の request の最終結果として返す。"""
+        if cmd.request_id is None:
+            return
+        request = self.requests.get(cmd.request_id)
+        if request is None or request.status != "accepted":
+            return
+        status = cmd.ack["status"] if cmd.ack is not None else None
+        if status == "accepted":
+            return
+        if status == "done":
+            request.status, request.reason = "done", None
+        else:
+            # 指令が拒否・失敗・タイムアウト：要求元には failed
+            # （代役の選択。タイムアウトの reason は target_offline）
+            request.status = "failed"
+            reason = cmd.ack.get("reason") if cmd.ack is not None else None
+            request.reason = str(reason) if reason else "target_offline"
+        self._respond(request)
 
     def _uart_heartbeat_silenced(self, now: datetime) -> bool:
         return any(f.type == "heartbeat_silence" and f.active(now) for f in self.faults)
@@ -353,6 +390,17 @@ class Gw01Lite:
                     "detail": {"device_id": self.bridge.profile.device_id},
                 },
             )
+            # UART デバイス名義の offline の state（retain、bridged_by 付き。#36）
+            offline = self.bridge.offline_state()
+            if offline is not None:
+                self.outbox.append(
+                    Outgoing(
+                        self.topic(KIND_STATE, offline.device_id),
+                        offline.to_dict(),
+                        QOS_BY_KIND[KIND_STATE],
+                        True,
+                    )
+                )
         self._send_uart_cmds(now)
 
     def _cmd_slot_free(self, now: datetime) -> bool:
@@ -370,6 +418,7 @@ class Gw01Lite:
                 record.timed_out = True
                 del self._in_flight[record.cmd_ref]
                 self.stats["uart_cmd_timeout"] += 1
+                self._finish_request(record)
                 continue
             if self._cmd_slot_free(now):
                 self._transmit(record, now)

@@ -1,6 +1,6 @@
 {
   "name": "heartbeat_rx_max_uptime",
-  "order": 21,
+  "order": 22,
   "direction": "01->03",
   "description": "境界値：uptime_ms 0xFFFFFFFF",
   "frame": {
@@ -10,7 +10,7 @@
     "uptime_ms": 4294967295
   },
   "hex": "03 03 01 08 04 ff ff ff ff e3 51 00",
-  "received_at": "2026-11-20T06:00:10.500Z",
+  "received_at": "2026-11-20T06:00:11.000Z",
   "expected": {
     "envelope": null,
     "discarded": null,

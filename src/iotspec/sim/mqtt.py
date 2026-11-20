@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
+import secrets
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
@@ -75,16 +76,25 @@ def broker_from_env() -> BrokerAddress:
 
 
 def client_for(
-    broker: BrokerAddress, device_id: str, will: Outgoing | None = None
+    broker: BrokerAddress,
+    device_id: str,
+    will: Outgoing | None = None,
+    *,
+    unique: bool = False,
 ) -> aiomqtt.Client:
-    """device_id の名義で接続する aiomqtt.Client（テストの観測用にも使う）。"""
+    """device_id の名義で接続する aiomqtt.Client（テストの観測用にも使う）。
+
+    client id は device_id。unique=True なら乱数を付ける（同じ名義で同時に複数つなぐ観測用。
+    MQTT は同じ client id の接続を1つしか許さず、後からの接続が前の接続を切ってしまう）。
+    """
     username, password = broker.credentials_for(device_id)
+    identifier = f"{device_id}-{secrets.token_hex(4)}" if unique else device_id
     return aiomqtt.Client(
         hostname=broker.host,
         port=broker.port,
         username=username,
         password=password,
-        identifier=device_id,
+        identifier=identifier,
         will=(
             None
             if will is None
@@ -92,6 +102,17 @@ def client_for(
         ),
         max_inflight_messages=MQTT_MAX_IN_FLIGHT,
     )
+
+
+def _abort(client: aiomqtt.Client) -> None:
+    """DISCONNECT を送らずに接続を切る（ブローカーは LWT を発行する）。
+
+    ソケットだけを閉じると、イベントループに登録された読み書きの監視が残り、同じ番号の
+    ファイル記述子を次の接続が使ったときに混線する。paho の _sock_close は監視を外してから閉じる。
+    aiomqtt と paho には、DISCONNECT なしで切る公開の手段がない。
+    """
+    with contextlib.suppress(OSError):
+        client._client._sock_close()
 
 
 async def _publish(client: aiomqtt.Client, items: list[Outgoing]) -> None:
@@ -126,8 +147,14 @@ def _open_uart(simulation: Simulation, stack: contextlib.ExitStack) -> list[tupl
     return links
 
 
-async def run_over_mqtt(simulation: Simulation, broker: BrokerAddress) -> None:
-    """シミュレーションを最後まで流し、MQTT と仮想シリアルでやり取りする。"""
+async def run_over_mqtt(
+    simulation: Simulation, broker: BrokerAddress, *, kill: asyncio.Event | None = None
+) -> None:
+    """シミュレーションを最後まで流し、MQTT と仮想シリアルでやり取りする。
+
+    kill を渡すと、それがセットされた時点で DISCONNECT を送らずに接続を切って終わる
+    （電源断やネットワーク断と同じで、ブローカーは LWT を発行する。契約テストの LWT の確認用）。
+    """
     simulation.schedule()
     mqtt_devices: list[MqttDevice] = simulation.mqtt_devices
     with contextlib.ExitStack() as sync_stack:
@@ -175,13 +202,26 @@ async def run_over_mqtt(simulation: Simulation, broker: BrokerAddress) -> None:
                 for d in mqtt_devices
                 if d.subscriptions()
             ]
+            end = simulation.scenario.end
+            runner = asyncio.create_task(simulation.runtime.run_until_async(end, after_step=flush))
+            killer = asyncio.create_task(kill.wait()) if kill is not None else None
             try:
-                end = simulation.scenario.end
-                await simulation.runtime.run_until_async(end, after_step=flush)
+                waiting = {runner} if killer is None else {runner, killer}
+                await asyncio.wait(waiting, return_when=asyncio.FIRST_COMPLETED)
+                if killer is not None and killer.done():
+                    runner.cancel()
+                    await asyncio.gather(runner, return_exceptions=True)
+                    for remove in removers:
+                        remove()
+                    for client in clients.values():
+                        _abort(client)
+                    stack.pop_all()  # 切った接続には DISCONNECT を送らない
+                    return
+                runner.result()
                 await flush()
                 for device in mqtt_devices:
                     await _publish(clients[device.device_id], [device.shutdown()])
             finally:
-                for task in receivers:
+                for task in [*receivers, *([killer] if killer is not None else [])]:
                     task.cancel()
                 await asyncio.gather(*receivers, return_exceptions=True)

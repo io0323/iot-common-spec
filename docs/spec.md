@@ -76,7 +76,7 @@ JSON上の値は浮動小数点数で、上記の単位そのものを表す（�
 |---|---|
 | telemetry | `readings[]`：`{channel, value, unit, quality}`。`actuators[]`：`{id, level, owner}`（任意。`owner` も任意で、値は `interlock`・`safety`・`manual`・`auto`・`schedule`・`local`・`none`。v0.2.1で確定）。`device_state`（任意の文字列。デバイス内の状態名。v0.2.1で追加） |
 | event | `code`, `severity`, `message`（任意）, `channel`（任意）, `value`（任意）, `detail`（任意のobject） |
-| state | `status`（online／offline）, `mode`, `channels[]`：`{channel, unit, period_ms}`, `actuators[]`：`{id, min, max, max_on_s}`, `fw_version` |
+| state | `status`（online／offline）, `mode`, `channels[]`：`{channel, unit, period_ms}`, `actuators[]`：`{id, min, max, max_on_s}`, `fw_version`。`bridged_by`（任意。作品03がUARTデバイスの代わりに発行するstateに付ける、作品03の `device_id`。v0.2.1で追加） |
 | cmd | 下記 |
 | cmd/ack | 下記 |
 | request | 下記 |
@@ -167,6 +167,8 @@ JSON上の値は浮動小数点数で、上記の単位そのものを表す（�
 | 03 → 01 | 8秒 | 16件 | **条件付きで十分**。03は01への指令を毎秒1件まで、未完了は同時4件までに制限する（16件＝16秒分） |
 | MQTTの再配送（QoS 1） | 通常は数秒。再接続をまたぐとその間 | 発信元・kindごとに `seq` 1,024個 | 十分。再配送されるのは確認待ちの最大32件だけで、発信元・kindごと毎秒10件の上限なら1,024個は100秒以上にあたる |
 
+作品01への「毎秒1件」には再送も含める。ACKが返らない指令の再送は、新しい指令より先に送る（v0.2.1で明記）。
+
 `cmd_ref` は65,536で一周するが、毎秒1件の制限なら一周に18時間以上かかり、16件の記憶と衝突しない。
 
 ### 送信量の上限（重複排除の前提）
@@ -214,7 +216,9 @@ JSON上の値は浮動小数点数で、上記の単位そのものを表す（�
 | 遅延到着 | 受信側 | `ts` が受信時刻より過去で、差が周期の3倍超（5分以内） | 最新値を更新しない（より新しい値を上書きしない） | 時系列としては保存する |
 | 値の形式不正 | 受信側 | JSON Schema違反、未知の単位 | 破棄してカウント | 破棄してカウント |
 
-`status: offline` のstate（LWTと正常終了時のoffline）は、接続時に登録するので `seq` のカウンタを進めず、登録時点の値（次に使う `seq`）を入れる。受信側はこの電文を重複・欠損・遅延の判定から外して必ず受け入れ、`seq` の記憶にも加えない（v0.2.1で明記）。
+`bridged_by` を持つstate（作品03がUARTデバイスの代わりに発行したもの）について、受信側は `bridged_by` のデバイスがofflineなら、配下のデバイスも状態不明として扱う（v0.2.1で明記）。
+
+`status: offline` のstate（LWTと正常終了時のoffline、作品03が代わりに発行するUARTデバイスのoffline）は、接続時に登録するので `seq` のカウンタを進めず、登録時点の値（次に使う `seq`）を入れる。受信側はこの電文を重複・欠損・遅延の判定から外して必ず受け入れ、`seq` の記憶にも加えない（v0.2.1で明記）。
 
 破棄や置き換えの件数は、各作品とも状態として公開する（03は `gw-01` のtelemetry、04は `/health`）。
 
@@ -265,7 +269,7 @@ JSON上の値は浮動小数点数で、上記の単位そのものを表す（�
 | CMD | 0x10 | 03→01 | `cmd_ref:u16, op:u8, ttl_s:u16, args:可変長` | `cmd` |
 | ACK | 0x11 | 01→03 | `cmd_ref:u16, status:u8, reason:u8, limited:u8, applied:u16` | `cmd/ack` |
 
-- HEARTBEATは双方向1秒周期。3秒途絶えたら相手を切断とみなす。作品01は10秒途絶えたら手動指定を解除し `UPSTREAM_LOST` を送る
+- HEARTBEATは双方向1秒周期。3秒途絶えたら相手を切断とみなす。作品03はUARTデバイスのHEARTBEATが3秒途絶えたら、そのデバイス名義のofflineのstateを `bridged_by` 付き・retainで発行する（`seq` は進めない。v0.2.1で明記）。作品01は10秒途絶えたら手動指定を解除し `UPSTREAM_LOST` を送る
 - `cmd_ref` は作品03が採番する16ビットの参照番号。作品03は `cmd_ref` ⇔ `cmd_id`（ULID）の対応表を持ち、再送では同じ `cmd_ref` を使う
 - `ttl_s` はリース秒数。絶対時刻を持たない作品01は受信時点から数える
 - `op`：0x01 SET_FAN_OVERRIDE、0x02 CLEAR_OVERRIDE、0x03 SET_THRESHOLD、0x10 GET_STATUS、0x11 GET_DIAG。汎用指令との対応は作品03の `devices.yaml` で定義する
@@ -300,7 +304,7 @@ STATEが破損で失われた場合に備え、作品03は `uptime_ms` が減っ
 | quality 0／1／2 | good／stale／fault |
 | status 0／1／2／3 | accepted／done／rejected／failed |
 | reason 0／1／2／3／4／5 | null／unsafe／invalid_arg／unknown_op／expired／internal |
-| EVENT code 1／2／3／4／5／6／7 | BOOT／STATE_CHANGED／THRESHOLD_EXCEEDED／THRESHOLD_CLEARED／SENSOR_FAULT／SENSOR_RECOVERED／UPSTREAM_LOST |
+| EVENT code 1／2／3／4／5／6／7／8 | BOOT／STATE_CHANGED／THRESHOLD_EXCEEDED／THRESHOLD_CLEARED／SENSOR_FAULT／SENSOR_RECOVERED／UPSTREAM_LOST／UPSTREAM_RESTORED（8はv0.2.1で追加。作品01は上位のHEARTBEATが戻ったら送る） |
 | severity 0／1／2 | info／warning／critical |
 
 ゴールデンフレーム（符号化済みの16進列と、対応するJSON）を `uart/golden/` に置き、作品01の符号化と作品03の復号の両方をこれでテストする。
@@ -382,7 +386,7 @@ v0.2.1（文書修正）：規範部分（Schema・トピック・フレーム�
 
 ### 確定前に決めること
 
-- [ ] 本版の内容で確定してよいか。確定したら `iot-common-spec` に `v0.2.0` のタグを付ける
+- [ ] 本版の内容で確定してよいか。確定したら `iot-common-spec` にタグを付ける（初回のタグは、実装で確定した点を含めて `v0.2.1` とする。CHANGELOG.md）
 - [x] site名の既定値（`home` 案）
 - [x] リースの既定値（60秒）と上限（600秒）でよいか
 

@@ -46,6 +46,8 @@ from iotspec.uart.frames import (
 ROOT = Path(__file__).resolve().parents[1]
 GOLDEN_DIR = ROOT / "uart" / "golden"
 PROFILE_ID = "mcu-c-01"
+BRIDGED_BY = "gw-01"
+"""変換する作品03の device_id（state の bridged_by。v0.2.1 #36）。"""
 START = datetime(2026, 11, 20, 6, 0, 0, tzinfo=UTC)
 STEP = timedelta(milliseconds=500)
 
@@ -79,7 +81,9 @@ class _Session:
     def __init__(self) -> None:
         self.clock = VirtualClock(START)
         self._counter = 0
-        self.bridge = UartBridge(load_profile(PROFILE_ID), self.clock, new_id=self._new_id)
+        self.bridge = UartBridge(
+            load_profile(PROFILE_ID), self.clock, new_id=self._new_id, bridged_by=BRIDGED_BY
+        )
         self.goldens: list[Golden] = []
 
     def _new_id(self) -> str:
@@ -252,6 +256,11 @@ def build_session() -> list[Golden]:
         "event_sensor_fault",
         "EVENT：SENSOR_FAULT critical、WARNING → SENSOR_FAULT（EVENT の連番は TELEMETRY と別で 1）",
         Event(1, 4500, 5, 2, 2, 4, -32768),
+    )
+    s.rx(
+        "event_upstream_restored",
+        "EVENT：UPSTREAM_RESTORED（code 8、v0.2.1 #34）info",
+        Event(2, 4800, 8, 0, 2, 2, 2500),
     )
     s.rx(
         "heartbeat_rx_max_uptime",

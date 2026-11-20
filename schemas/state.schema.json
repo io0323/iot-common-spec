@@ -92,6 +92,10 @@
         },
         "fw_version": {
           "type": "string"
+        },
+        "bridged_by": {
+          "description": "任意。作品03が UART デバイスの代わりに発行する state に付ける、変換した作品03の device_id（v0.2.1 #36）。受信側は bridged_by のデバイスが offline なら、このデバイスも状態不明として扱う",
+          "$ref": "common.schema.json#/$defs/device_id"
         }
       }
     }
