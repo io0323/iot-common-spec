@@ -43,9 +43,6 @@
         "args": {
           "type": "object"
         },
-        "lease_s": {
-          "$ref": "common.schema.json#/$defs/lease_s"
-        },
         "schedule": {
           "type": "object",
           "required": [

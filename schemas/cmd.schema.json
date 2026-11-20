@@ -42,9 +42,6 @@
             "schedule"
           ]
         },
-        "lease_s": {
-          "$ref": "common.schema.json#/$defs/lease_s"
-        },
         "origin": {
           "type": "object",
           "properties": {

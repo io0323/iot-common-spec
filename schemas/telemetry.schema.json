@@ -49,6 +49,10 @@
             }
           }
         },
+        "device_state": {
+          "description": "任意。デバイス内の状態名（例：UART の TELEMETRY の state をプロファイルの states で名前にしたもの。v0.2.1 で追加）",
+          "type": "string"
+        },
         "actuators": {
           "description": "任意（第3章）",
           "type": "array",

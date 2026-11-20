@@ -36,15 +36,32 @@
     },
     "unit": {
       "description": "単位（第2章の単位表）",
-      "enum": ["degC", "pct_rh", "pct", "level_pm", "hPa", "lux", "bytes", "rpm"]
+      "enum": [
+        "degC",
+        "pct_rh",
+        "pct",
+        "level_pm",
+        "hPa",
+        "lux",
+        "bytes",
+        "rpm"
+      ]
     },
     "quality": {
       "description": "データ品質（第5章）",
-      "enum": ["good", "stale", "fault"]
+      "enum": [
+        "good",
+        "stale",
+        "fault"
+      ]
     },
     "severity": {
       "description": "重大度（第6章）",
-      "enum": ["info", "warning", "critical"]
+      "enum": [
+        "info",
+        "warning",
+        "critical"
+      ]
     },
     "event_code": {
       "description": "イベントコード。列挙せず形式（英大文字・数字・アンダースコア）だけを検査する（第6章）",
@@ -59,7 +76,13 @@
     },
     "op": {
       "description": "指令・要求の操作（第3章）",
-      "enum": ["set_actuator", "release", "set_mode", "set_param", "get_status"]
+      "enum": [
+        "set_actuator",
+        "release",
+        "set_mode",
+        "set_param",
+        "get_status"
+      ]
     },
     "boot_id": {
       "description": "起動ごとに変わるID。全デバイスで16進小文字8桁（32ビット）。同じデバイスの前回の起動と高い確率で異なればよく、全体での一意性は求めない（第3章、v0.2.1 で確定）",
@@ -67,52 +90,106 @@
       "pattern": "^[0-9a-f]{8}$"
     },
     "lease_s": {
-      "description": "リース秒数。省略可で、省略時は既定60秒とみなす。上限600秒。意味を持つのは set_actuator だけで、他の op では無視する（第4章、v0.2.1 で確定）",
+      "description": "リース秒数。省略可で、省略時は既定60秒とみなす。上限600秒。意味を持つのは set_actuator だけで、他の op に付いた lease_s は無視する（範囲の検査も set_actuator のときだけ。第4章、v0.2.1 で確定）",
       "type": "integer",
       "minimum": 1,
       "maximum": 600
     },
     "op_args": {
-      "description": "op ごとの args の必須項目。set_actuator は id と level（第3章）。ほかの op は未定義（open-questions #5）",
+      "description": "op ごとの検査。set_actuator は args.id と args.level（第3章）が必須で、lease_s の範囲を検査する。ほかの op の args は未定義（open-questions #5）で、lease_s は無視する（#13）",
       "if": {
-        "properties": { "op": { "const": "set_actuator" } },
-        "required": ["op"]
+        "properties": {
+          "op": {
+            "const": "set_actuator"
+          }
+        },
+        "required": [
+          "op"
+        ]
       },
       "then": {
-        "required": ["args"],
+        "required": [
+          "args"
+        ],
         "properties": {
           "args": {
             "type": "object",
-            "required": ["id", "level"],
+            "required": [
+              "id",
+              "level"
+            ],
             "properties": {
-              "id": { "$ref": "#/$defs/actuator_id" },
-              "level": { "$ref": "#/$defs/level" }
+              "id": {
+                "$ref": "#/$defs/actuator_id"
+              },
+              "level": {
+                "$ref": "#/$defs/level"
+              }
             }
+          },
+          "lease_s": {
+            "$ref": "#/$defs/lease_s"
           }
         }
       }
     },
     "cmd_reason": {
       "description": "cmd/ack の reason（第3章）",
-      "enum": ["unsafe", "invalid_arg", "unknown_op", "unknown_target", "expired", "busy", "internal"]
+      "enum": [
+        "unsafe",
+        "invalid_arg",
+        "unknown_op",
+        "unknown_target",
+        "expired",
+        "busy",
+        "internal"
+      ]
     },
     "envelope": {
       "description": "共通エンベロープ（第3章）。未知の項目は許可する（第1章「版の方針」）",
       "type": "object",
-      "required": ["schema", "msg_id", "device_id", "seq", "boot_id", "ts", "ts_source", "payload"],
+      "required": [
+        "schema",
+        "msg_id",
+        "device_id",
+        "seq",
+        "boot_id",
+        "ts",
+        "ts_source",
+        "payload"
+      ],
       "properties": {
         "schema": {
           "type": "string",
           "pattern": "^iot\\.v1\\.[a-z][a-z_]*$"
         },
-        "msg_id": { "$ref": "#/$defs/ulid" },
-        "device_id": { "$ref": "#/$defs/device_id" },
-        "seq": { "$ref": "#/$defs/uint32" },
-        "boot_id": { "$ref": "#/$defs/boot_id" },
-        "ts": { "$ref": "#/$defs/ts" },
-        "ts_source": { "enum": ["device", "gateway"] },
-        "payload": { "type": "object" },
-        "uptime_ms": { "$ref": "#/$defs/uint32" }
+        "msg_id": {
+          "$ref": "#/$defs/ulid"
+        },
+        "device_id": {
+          "$ref": "#/$defs/device_id"
+        },
+        "seq": {
+          "$ref": "#/$defs/uint32"
+        },
+        "boot_id": {
+          "$ref": "#/$defs/boot_id"
+        },
+        "ts": {
+          "$ref": "#/$defs/ts"
+        },
+        "ts_source": {
+          "enum": [
+            "device",
+            "gateway"
+          ]
+        },
+        "payload": {
+          "type": "object"
+        },
+        "uptime_ms": {
+          "$ref": "#/$defs/uint32"
+        }
       }
     }
   }
