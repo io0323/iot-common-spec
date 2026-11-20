@@ -1,0 +1,20 @@
+{
+  "schema": "iot.v1.cmd",
+  "msg_id": "01JD3Q8Z5K7M2N4P6R8T0V0015",
+  "device_id": "gw-01",
+  "seq": 43,
+  "boot_id": "7f3a9c01",
+  "ts": "2026-11-20T06:00:12.345Z",
+  "ts_source": "device",
+  "payload": {
+    "cmd_id": "01JD3Q8Z5K7M2N4P6R8T0V0014",
+    "op": "set_actuator",
+    "args": {
+      "id": "led_grow",
+      "level": 1000
+    },
+    "priority": "schedule",
+    "lease_s": 600,
+    "expires_at": "2026-11-20 06:10:12"
+  }
+}

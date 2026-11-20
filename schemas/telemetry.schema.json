@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/io0323/iot-common-spec/schemas/telemetry.schema.json",
+  "title": "telemetry：周期的な計測値",
+  "allOf": [
+    {
+      "$ref": "common.schema.json#/$defs/envelope"
+    }
+  ],
+  "properties": {
+    "schema": {
+      "const": "iot.v1.telemetry"
+    },
+    "payload": {
+      "$ref": "#/$defs/payload"
+    }
+  },
+  "$defs": {
+    "payload": {
+      "type": "object",
+      "required": [
+        "readings"
+      ],
+      "properties": {
+        "readings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "channel",
+              "value",
+              "unit",
+              "quality"
+            ],
+            "properties": {
+              "channel": {
+                "$ref": "common.schema.json#/$defs/channel"
+              },
+              "value": {
+                "description": "単位そのものを表す数値（第2章）",
+                "type": "number"
+              },
+              "unit": {
+                "$ref": "common.schema.json#/$defs/unit"
+              },
+              "quality": {
+                "$ref": "common.schema.json#/$defs/quality"
+              }
+            }
+          }
+        },
+        "actuators": {
+          "description": "任意（第3章）",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "level",
+              "owner"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "common.schema.json#/$defs/actuator_id"
+              },
+              "level": {
+                "$ref": "common.schema.json#/$defs/level"
+              },
+              "owner": {
+                "description": "値は未定義（open-questions #10）",
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

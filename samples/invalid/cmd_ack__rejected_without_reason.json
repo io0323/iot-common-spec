@@ -1,0 +1,17 @@
+{
+  "schema": "iot.v1.cmd_ack",
+  "msg_id": "01JD3Q8Z5K7M2N4P6R8T0V0026",
+  "device_id": "mcu-c-01",
+  "seq": 0,
+  "boot_id": "7f3a9c01",
+  "ts": "2026-11-20T06:00:12.345Z",
+  "ts_source": "gateway",
+  "uptime_ms": 60000,
+  "payload": {
+    "cmd_id": "01JD3Q8Z5K7M2N4P6R8T0V0025",
+    "status": "rejected",
+    "limited": false,
+    "applied": {},
+    "reason": null
+  }
+}

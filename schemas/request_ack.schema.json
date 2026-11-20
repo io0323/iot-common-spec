@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/io0323/iot-common-spec/schemas/request_ack.schema.json",
+  "title": "request/ack：要求の受理・結果（03 → 04）",
+  "allOf": [
+    {
+      "$ref": "common.schema.json#/$defs/envelope"
+    }
+  ],
+  "properties": {
+    "schema": {
+      "const": "iot.v1.request_ack"
+    },
+    "payload": {
+      "$ref": "#/$defs/payload"
+    }
+  },
+  "$defs": {
+    "payload": {
+      "type": "object",
+      "required": [
+        "request_id",
+        "status"
+      ],
+      "properties": {
+        "request_id": {
+          "$ref": "common.schema.json#/$defs/ulid"
+        },
+        "status": {
+          "enum": [
+            "accepted",
+            "rejected",
+            "done",
+            "failed"
+          ]
+        },
+        "cmd_id": {
+          "$ref": "common.schema.json#/$defs/ulid"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "$ref": "common.schema.json#/$defs/cmd_reason"
+            },
+            {
+              "enum": [
+                "not_permitted",
+                "lower_priority",
+                "target_offline",
+                "emergency_mode",
+                "gateway_timeout"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "description": "cmd_id は accepted 以降に付く（open-questions #7）",
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "accepted",
+                  "done"
+                ]
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "cmd_id"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "rejected",
+                  "failed"
+                ]
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "required": [
+              "reason"
+            ],
+            "properties": {
+              "reason": {
+                "not": {
+                  "type": "null"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

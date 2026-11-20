@@ -1,0 +1,55 @@
+{
+  "schema": "iot.v1.telemetry",
+  "msg_id": "01JD3Q8Z5K7M2N4P6R8T0V0001",
+  "device_id": "mcu-cpp-01",
+  "seq": 0,
+  "boot_id": "7f3a9c01",
+  "ts": "2026-11-20T06:00:12.345Z",
+  "ts_source": "device",
+  "payload": {
+    "readings": [
+      {
+        "channel": "temp_air",
+        "value": "41.25",
+        "unit": "degC",
+        "quality": "good"
+      },
+      {
+        "channel": "humidity",
+        "value": 55.0,
+        "unit": "pct_rh",
+        "quality": "good"
+      },
+      {
+        "channel": "pressure",
+        "value": 1013.2,
+        "unit": "hPa",
+        "quality": "stale"
+      },
+      {
+        "channel": "lux",
+        "value": 0,
+        "unit": "lux",
+        "quality": "good"
+      },
+      {
+        "channel": "soil",
+        "value": 32.5,
+        "unit": "pct",
+        "quality": "fault"
+      }
+    ],
+    "actuators": [
+      {
+        "id": "fan_main",
+        "level": 0,
+        "owner": "auto"
+      },
+      {
+        "id": "pump",
+        "level": 1000,
+        "owner": "manual"
+      }
+    ]
+  }
+}

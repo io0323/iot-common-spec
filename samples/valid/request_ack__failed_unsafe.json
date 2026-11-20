@@ -1,0 +1,15 @@
+{
+  "schema": "iot.v1.request_ack",
+  "msg_id": "01JD3Q8Z5K7M2N4P6R8T0V0042",
+  "device_id": "gw-01",
+  "seq": 12,
+  "boot_id": "7f3a9c01",
+  "ts": "2026-11-20T06:00:12.345Z",
+  "ts_source": "device",
+  "payload": {
+    "request_id": "01JD3Q8Z5K7M2N4P6R8T0V0040",
+    "status": "failed",
+    "cmd_id": "01JD3Q8Z5K7M2N4P6R8T0V0041",
+    "reason": "unsafe"
+  }
+}

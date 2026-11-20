@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/io0323/iot-common-spec/schemas/event.schema.json",
+  "title": "event：異常・復旧・状態変化",
+  "allOf": [
+    {
+      "$ref": "common.schema.json#/$defs/envelope"
+    }
+  ],
+  "properties": {
+    "schema": {
+      "const": "iot.v1.event"
+    },
+    "payload": {
+      "$ref": "#/$defs/payload"
+    }
+  },
+  "$defs": {
+    "payload": {
+      "type": "object",
+      "required": [
+        "code",
+        "severity"
+      ],
+      "properties": {
+        "code": {
+          "$ref": "common.schema.json#/$defs/event_code"
+        },
+        "severity": {
+          "$ref": "common.schema.json#/$defs/severity"
+        },
+        "message": {
+          "type": "string"
+        },
+        "channel": {
+          "$ref": "common.schema.json#/$defs/channel"
+        },
+        "value": {
+          "type": "number"
+        },
+        "detail": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

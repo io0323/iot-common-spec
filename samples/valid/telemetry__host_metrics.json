@@ -1,0 +1,37 @@
+{
+  "schema": "iot.v1.telemetry",
+  "msg_id": "01JD3Q8Z5K7M2N4P6R8T0V0003",
+  "device_id": "gw-01",
+  "seq": 1,
+  "boot_id": "7f3a9c01",
+  "ts": "2026-11-20T06:00:12.345Z",
+  "ts_source": "device",
+  "payload": {
+    "readings": [
+      {
+        "channel": "cpu_usage",
+        "value": 12.5,
+        "unit": "pct",
+        "quality": "good"
+      },
+      {
+        "channel": "mem_free",
+        "value": 524288000,
+        "unit": "bytes",
+        "quality": "good"
+      },
+      {
+        "channel": "fan_speed",
+        "value": 3200,
+        "unit": "rpm",
+        "quality": "good"
+      },
+      {
+        "channel": "fan_out",
+        "value": 500,
+        "unit": "level_pm",
+        "quality": "good"
+      }
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "schema": "iot.v1.request",
+  "msg_id": "01JD3Q8Z5K7M2N4P6R8T0V0033",
+  "device_id": "app-01",
+  "seq": 7,
+  "boot_id": "7f3a9c01",
+  "ts": "2026-11-20T06:00:12.345Z",
+  "ts_source": "device",
+  "payload": {
+    "request_id": "01JD3Q8Z5K7M2N4P6R8T0V0032",
+    "kind": "manual",
+    "target": "mcu-c-01",
+    "op": "release",
+    "args": {
+      "id": "fan_main"
+    },
+    "lease_s": 1
+  }
+}

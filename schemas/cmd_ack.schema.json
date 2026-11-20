@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/io0323/iot-common-spec/schemas/cmd_ack.schema.json",
+  "title": "cmd/ack：指令の受理・結果",
+  "allOf": [
+    {
+      "$ref": "common.schema.json#/$defs/envelope"
+    }
+  ],
+  "properties": {
+    "schema": {
+      "const": "iot.v1.cmd_ack"
+    },
+    "payload": {
+      "$ref": "#/$defs/payload"
+    }
+  },
+  "$defs": {
+    "payload": {
+      "type": "object",
+      "required": [
+        "cmd_id",
+        "status"
+      ],
+      "properties": {
+        "cmd_id": {
+          "$ref": "common.schema.json#/$defs/ulid"
+        },
+        "status": {
+          "enum": [
+            "accepted",
+            "done",
+            "rejected",
+            "failed"
+          ]
+        },
+        "limited": {
+          "type": "boolean"
+        },
+        "applied": {
+          "type": "object"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "$ref": "common.schema.json#/$defs/cmd_reason"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "rejected",
+              "failed"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "reason"
+        ],
+        "properties": {
+          "reason": {
+            "$ref": "common.schema.json#/$defs/cmd_reason"
+          }
+        }
+      }
+    }
+  }
+}
