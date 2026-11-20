@@ -4,6 +4,7 @@
     uv run python tools/gen_golden.py           # uart/golden/ に書き出す
     uv run python tools/gen_golden.py --check   # 書き出さずに差分を調べる（差分ありで1）
 
+UART の seq は方向・フレーム種別ごとの連番（v0.2.1 #25）。
 ゴールデンは1本のセッション（order の順）として作る。受信側（01 → 03）のフレームは、
 直前までのフレームを順に UartBridge に通した状態で変換した結果を expected に持つ。
 時刻は固定の VirtualClock（1フレームごとに 500ms 進める）、msg_id は固定の規則で作るので、
@@ -184,17 +185,17 @@ def build_session() -> list[Golden]:
     s.tx_raw(
         "cmd_set_threshold",
         "SET_THRESHOLD warn 35.00℃ crit 45.00℃ hyst 2.00℃（汎用指令との対応は未定。符号化のみ）",
-        Cmd(b.next_tx_seq(), 0x0003, 0x03, 0, (3500, 4500, 200)),
+        Cmd(b.next_tx_seq(Cmd.TYPE), 0x0003, 0x03, 0, (3500, 4500, 200)),
     )
     s.tx_raw(
         "cmd_set_threshold_negative",
         "SET_THRESHOLD の i16 の負の値と最小値（符号化のみ）",
-        Cmd(b.next_tx_seq(), 0x0004, 0x03, 0, (-32768, -1000, 0)),
+        Cmd(b.next_tx_seq(Cmd.TYPE), 0x0004, 0x03, 0, (-32768, -1000, 0)),
     )
     s.tx_raw(
         "cmd_get_diag",
         "GET_DIAG（引数なし。汎用指令との対応はない。符号化のみ）",
-        Cmd(b.next_tx_seq(), 0x0005, 0x11, 0),
+        Cmd(b.next_tx_seq(Cmd.TYPE), 0x0005, 0x11, 0),
     )
     s.tx_raw("heartbeat_tx", "03 → 01 の HEARTBEAT", b.heartbeat_frame(123_456))
 
@@ -207,38 +208,39 @@ def build_session() -> list[Golden]:
     s.rx(
         "state_boot",
         "起動後の STATE：fw_version 0x0102 → '1.2'、boot_id → '7f3a9c01'、mode は INIT",
-        State(1, 0x0102, 0x7F3A9C01, 1000),
+        State(0, 0x0102, 0x7F3A9C01, 1000),
     )
     s.rx(
         "telemetry_normal",
         "TELEMETRY：25.12℃、good、NORMAL、fan 0",
-        Telemetry(2, 1000, 2512, 0, 1, 0),
+        Telemetry(1, 1000, 2512, 0, 1, 0),
     )
     s.rx(
         "event_threshold_exceeded",
         "EVENT：THRESHOLD_EXCEEDED critical、NORMAL → CRITICAL",
-        Event(3, 1500, 3, 2, 1, 3, 4500),
+        Event(0, 1500, 3, 2, 1, 3, 4500),
     )
-    s.rx("heartbeat_rx", "01 → 03 の HEARTBEAT（電文にはしない）", Heartbeat(4, 2000))
+    s.rx("heartbeat_rx", "01 → 03 の HEARTBEAT（電文にはしない）", Heartbeat(0, 2000))
     s.rx(
         "state_periodic",
         "60秒ごとの STATE（同じ boot_id）：mode は直近の TELEMETRY の状態名、"
         "period_ms は STATE の値",
-        State(5, 0x0102, 0x7F3A9C01, 500),
+        State(1, 0x0102, 0x7F3A9C01, 500),
     )
     s.rx(
         "ack_done_limited",
         "ACK done、limited あり、applied 1000 → cmd/ack の applied {level: 1000}",
-        Ack(6, 0x1234, 1, 0, 1, 1000),
+        Ack(0, 0x1234, 1, 0, 1, 1000),
     )
     s.rx(
         "ack_rejected_expired",
         "ACK rejected expired（CLEAR_OVERRIDE なので applied を付けない）、limited なし",
-        Ack(7, 0x0001, 2, 4, 0, 0),
+        Ack(1, 0x0001, 2, 4, 0, 0),
     )
     s.rx(
         "telemetry_fault_min_temp",
-        "境界値：temp_c100 -32768（-327.68℃）、fault、SENSOR_FAULT、fan 1000、seq 65535",
+        "境界値：temp_c100 -32768（-327.68℃）、fault、SENSOR_FAULT、fan 1000、"
+        "seq 65535（欠番あり）",
         Telemetry(65535, 3000, -32768, 2, 4, 1000),
     )
     s.rx(
@@ -248,18 +250,18 @@ def build_session() -> list[Golden]:
     )
     s.rx(
         "event_sensor_fault",
-        "EVENT：SENSOR_FAULT critical、WARNING → SENSOR_FAULT（一周後の seq 65537）",
+        "EVENT：SENSOR_FAULT critical、WARNING → SENSOR_FAULT（EVENT の連番は TELEMETRY と別で 1）",
         Event(1, 4500, 5, 2, 2, 4, -32768),
     )
     s.rx(
         "heartbeat_rx_max_uptime",
         "境界値：uptime_ms 0xFFFFFFFF",
-        Heartbeat(2, 0xFFFFFFFF),
+        Heartbeat(1, 0xFFFFFFFF),
     )
     s.rx(
         "telemetry_crc_mismatch",
         "壊れたフレーム：CRC 不一致 → 破棄",
-        Telemetry(3, 0xFFFFFFFF, 2600, 0, 1, 0),
+        Telemetry(1, 0xFFFFFFFF, 2600, 0, 1, 0),
         corrupt=True,
     )
     s.rx(
@@ -274,13 +276,13 @@ def build_session() -> list[Golden]:
     )
     s.rx(
         "state_after_reboot",
-        "再起動後の STATE：boot_id '00000001'、fw_version 0x0103 → '1.3'、連番は振り直し",
-        State(2, 0x0103, 0x00000001, 2000),
+        "再起動後の STATE：boot_id '00000001'、fw_version 0x0103 → '1.3'、種別ごとの連番は振り直し",
+        State(0, 0x0103, 0x00000001, 2000),
     )
     s.rx(
         "telemetry_new_boot",
         "新しい boot_id での TELEMETRY",
-        Telemetry(3, 2050, 2420, 0, 1, 250),
+        Telemetry(2, 2050, 2420, 0, 1, 250),
     )
     return s.goldens
 

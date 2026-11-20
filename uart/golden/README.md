@@ -11,7 +11,7 @@
   - 01 → 03：`received_at`（受信時刻）と `expected`（`envelope`：変換後の電文、`discarded`：破棄の理由、
     `request_state`：GET_STATUS で STATE を求めるか、`dropped_telemetry_total`：STATE 待ちで破棄した TELEMETRY の累計）
 
-ゴールデンは `NN` の順に1本のセッションになっています。01 → 03 の期待値は、それより前のフレームを
+UART の `seq` は方向・フレーム種別ごとの連番です（v0.2.1 #25）。ゴールデンは `NN` の順に1本のセッションになっています。01 → 03 の期待値は、それより前のフレームを
 すべて同じ順に通した状態での結果です（boot_id、seq の一周、STATE 待ちなど）。
 変換にはデバイスプロファイル `profiles/mcu-c-01.yaml` を使います。
 

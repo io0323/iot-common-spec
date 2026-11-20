@@ -2,7 +2,8 @@
 
 - 受信（01 → 03）：TELEMETRY・EVENT・STATE・ACK を telemetry・event・state・cmd/ack に変換する。
   ts は受信時刻（Clock から取る）、ts_source は gateway、uptime_ms はエンベロープに残す。
-  seq は UART の16ビット連番を SeqExtender で32ビットに広げた値。
+  seq は UART の16ビット連番（方向・フレーム種別ごと。v0.2.1 #25）を種別ごとの SeqExtender で
+  32ビットに広げた値で、対応する kind の seq にそのまま使う。
 - 送信（03 → 01）：cmd の payload をプロファイルの commands で CMD に変換する。
   cmd_ref は呼び出し側が渡す。
 - uptime_ms が減ったら再起動とみなし、新しい STATE を受けるまで TELEMETRY を変換せずに数える。
@@ -158,11 +159,14 @@ class UartBridge:
         """STATE 待ちの間に変換せず破棄した TELEMETRY の件数（第7章）。"""
         self.discards: Counter[str] = Counter()
         """破棄の理由ごとの件数（第5章：破棄や置き換えの件数は状態として公開する）。"""
-        self._rx = SeqExtender()
+        self._rx: dict[int, SeqExtender] = {}
+        self._rx_last: dict[int, int] = {}
+        self.uart_gaps: Counter[str] = Counter()
+        """受信した UART フレームの種別ごとの欠番の数（HEARTBEAT を含む）。"""
         self._last_uptime: int | None = None
         self._reboot_detected = False
         self._state_requested = False
-        self._tx_seq = 0
+        self._tx_seq: dict[int, int] = {}
         self._cmd_table: dict[int, tuple[str, int]] = {}
 
     # ------------------------------------------------------------ 受信（01 → 03）
@@ -191,7 +195,7 @@ class UartBridge:
         if self.awaiting_state and not self._state_requested:
             self._state_requested = True
             request = True
-        seq = self._rx.extend(frame.seq)
+        seq = self._extend(frame.TYPE, type(frame).__name__.upper(), frame.seq)
 
         if isinstance(frame, Heartbeat):
             return BridgeResult(request_state=request)
@@ -216,14 +220,15 @@ class UartBridge:
     def _on_state(self, frame: State) -> BridgeResult:
         boot_id = format_boot_id(frame.boot_id)
         if boot_id != self.boot_id or self._reboot_detected:
-            self._rx.reset()
+            self._rx.clear()
+            self._rx_last.clear()
             self.mode = UART_INITIAL_DEVICE_STATE
         self.boot_id = boot_id
         self.awaiting_state = False
         self._reboot_detected = False
         self._state_requested = False
         self._last_uptime = None
-        seq = self._rx.extend(frame.seq)
+        seq = self._extend(frame.TYPE, "STATE", frame.seq)
         payload = {
             "status": "online",
             "mode": self.mode,
@@ -298,6 +303,15 @@ class UartBridge:
             uptime_ms=uptime_ms,
         )
 
+    def _extend(self, frame_type: int, name: str, seq16: int) -> int:
+        """種別ごとの連番を広げ、欠番を数える。"""
+        extended = self._rx.setdefault(frame_type, SeqExtender()).extend(seq16)
+        last = self._rx_last.get(frame_type)
+        if last is not None and extended > last + 1:
+            self.uart_gaps[name] += extended - last - 1
+        self._rx_last[frame_type] = extended
+        return extended
+
     def _emit(self, envelope: Envelope, request: bool) -> BridgeResult:
         errors = validate(envelope.to_dict())
         if errors:
@@ -310,10 +324,10 @@ class UartBridge:
 
     # ------------------------------------------------------------ 送信（03 → 01）
 
-    def next_tx_seq(self) -> int:
-        """03 → 01 の向きの UART の連番（u16、一周したら0に戻る）。"""
-        seq = self._tx_seq
-        self._tx_seq = (seq + 1) % UART_SEQ_MODULO
+    def next_tx_seq(self, frame_type: int) -> int:
+        """03 → 01 の向きの、フレーム種別ごとの UART の連番（u16、一周したら0に戻る。#25）。"""
+        seq = self._tx_seq.get(frame_type, 0)
+        self._tx_seq[frame_type] = (seq + 1) % UART_SEQ_MODULO
         return seq
 
     def command_to_frame(self, cmd: Mapping[str, Any], cmd_ref: int) -> Cmd | CommandRejected:
@@ -343,10 +357,10 @@ class UartBridge:
             except InvalidLeaseError as exc:
                 return CommandRejected("invalid_arg", str(exc))
             ttl_s = lease_s if lease_s is not None else _NO_LEASE_TTL_S
-        frame = Cmd(self.next_tx_seq(), cmd_ref, spec.uart_op, ttl_s, values)
+        frame = Cmd(self.next_tx_seq(Cmd.TYPE), cmd_ref, spec.uart_op, ttl_s, values)
         self._cmd_table[cmd_ref] = (str(cmd["cmd_id"]), spec.uart_op)
         return frame
 
     def heartbeat_frame(self, uptime_ms: int) -> Heartbeat:
         """03 から 01 への HEARTBEAT。"""
-        return Heartbeat(self.next_tx_seq(), uptime_ms)
+        return Heartbeat(self.next_tx_seq(Heartbeat.TYPE), uptime_ms)

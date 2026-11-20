@@ -12,6 +12,9 @@ dependencies = [
     "aiomqtt>=2.3",
 ]
 
+[project.scripts]
+iotspec-sim = "iotspec.sim.cli:main"
+
 [dependency-groups]
 dev = [
     "pytest>=8.3",
@@ -34,6 +37,7 @@ packages = ["src/iotspec"]
 # 他作品が iotspec を取り込んだときも Schema を読めるよう、パッケージに同梱する
 "schemas" = "iotspec/_schemas"
 "profiles" = "iotspec/_profiles"
+"sim/scenarios" = "iotspec/_scenarios"
 
 [tool.ruff]
 line-length = 100

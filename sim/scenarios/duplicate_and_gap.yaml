@@ -1,0 +1,21 @@
+# 欠損と重複：seq の欠番、重複送信、送信途絶（受信側の欠損・重複の判定を試す）
+name: duplicate_and_gap
+description: telemetry の seq を3つ飛ばし、event を重複送信し、30秒間の送信途絶を起こす
+start: "2026-11-20T09:00:00.000Z"
+speed: 60
+duration_s: 600
+seed: 3
+devices:
+  - device_id: mcu-cpp-01
+    type: mcu_cpp_01
+    signals:
+      temp_air: {kind: constant, value: 22.0, noise: 0.1}
+      humidity: {kind: constant, value: 50.0, noise: 0.5}
+      pressure: {kind: constant, value: 1012.0, noise: 0.2}
+      lux: {kind: daylight, max: 15000, sunrise_hour: 6, sunset_hour: 18, noise: 100}
+      soil: {kind: soil, start: 50.0, decay_per_hour: 0.5, refill_per_pump_s: 0.2, noise: 0.1}
+faults:
+  - {type: seq_gap, device: mcu-cpp-01, kind: telemetry, at_s: 60, count: 3}
+  - {type: duplicate, device: mcu-cpp-01, kind: telemetry, at_s: 120, count: 2}
+  - {type: duplicate, device: mcu-cpp-01, kind: state, at_s: 0, count: 1}
+  - {type: silence, device: mcu-cpp-01, at_s: 300, duration_s: 30}

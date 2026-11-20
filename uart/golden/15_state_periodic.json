@@ -6,19 +6,19 @@
   "frame": {
     "type": "STATE",
     "type_code": 4,
-    "seq": 5,
+    "seq": 1,
     "fw_version": 258,
     "boot_id": 2134547457,
     "period_ms": 500
   },
-  "hex": "03 04 05 0c 08 02 01 01 9c 3a 7f f4 01 45 89 00",
+  "hex": "03 04 01 0c 08 02 01 01 9c 3a 7f f4 01 02 d8 00",
   "received_at": "2026-11-20T06:00:07.500Z",
   "expected": {
     "envelope": {
       "schema": "iot.v1.state",
       "msg_id": "01M7VRMW2C0000000000000004",
       "device_id": "mcu-c-01",
-      "seq": 5,
+      "seq": 1,
       "boot_id": "7f3a9c01",
       "ts": "2026-11-20T06:00:07.500Z",
       "ts_source": "gateway",

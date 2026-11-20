@@ -478,6 +478,7 @@ def test_command_to_frame_maps_and_rejects() -> None:
     assert isinstance(status, Cmd)
     assert (status.op, status.ttl_s, status.args) == (c.UART_OP_GET_STATUS, 0, ())
     assert status.seq == frame.seq + 1
+    assert bridge.heartbeat_frame(1).seq == 0  # HEARTBEAT は CMD と別の連番（#25）
 
     def reason(cmd: dict[str, Any]) -> str:
         result = bridge.command_to_frame({**base, **cmd}, 3)
@@ -592,7 +593,7 @@ def test_golden_session_replays_through_a_fresh_bridge() -> None:
             elif frame["type"] == "HEARTBEAT":
                 assert encode_frame(bridge.heartbeat_frame(frame["uptime_ms"])).hex(" ") == g["hex"]
             else:
-                assert bridge.next_tx_seq() == frame["seq"]
+                assert bridge.next_tx_seq(Cmd.TYPE) == frame["seq"]
                 decoded = decode_frame(bytes.fromhex(g["hex"]))
                 assert isinstance(decoded, Cmd)
                 assert list(decoded.args) == frame["args"]
@@ -609,3 +610,25 @@ def test_golden_session_replays_through_a_fresh_bridge() -> None:
         assert bridge.dropped_telemetry == expected["dropped_telemetry_total"], g["name"]
         if got is not None:
             assert validate(got) == []
+
+
+def test_per_type_seq_has_no_false_gaps_across_interleaved_frames() -> None:
+    """#25：UART の seq は種別ごと。種別をまたいでフレームを挟んでも kind ごとの seq は飛ばない。"""
+    bridge, _ = _booted()
+    set_cmd = {"cmd_id": "01JD3R0A5K7M2N4P6R8T0V2X4Y", "op": "get_status"}
+    assert isinstance(bridge.command_to_frame(set_cmd, 1), Cmd)
+    telemetry_seqs: list[int] = []
+    event_seqs: list[int] = []
+    for i in range(1, 6):
+        (t,) = bridge.receive(Telemetry(i - 1, i * 1000, 2000, 0, 1, 0)).envelopes
+        telemetry_seqs.append(t.seq)
+        assert bridge.receive(Heartbeat(i - 1, i * 1000 + 1)).envelopes == ()
+        (e,) = bridge.receive(Event(i - 1, i * 1000 + 2, 2, 0, 1, 2, 2000)).envelopes
+        event_seqs.append(e.seq)
+        (a,) = bridge.receive(Ack(i - 1, 1, 1, 0, 0, 0)).envelopes
+        assert a.seq == i - 1
+    assert telemetry_seqs == event_seqs == [0, 1, 2, 3, 4]
+    assert sum(bridge.uart_gaps.values()) == 0
+    # 本当の欠番は種別ごとに数える
+    bridge.receive(Telemetry(8, 9000, 2000, 0, 1, 0))
+    assert bridge.uart_gaps == {"TELEMETRY": 3}

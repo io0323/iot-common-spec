@@ -1,0 +1,19 @@
+# 通常の1日：温度の日周変動、照度の昼夜、土壌水分の低下（給水は上位の指令で行う）
+name: normal_day
+description: mcu-cpp-01 が異常なしで1日動く。結合テストでは60倍速で1分間（仮想1時間）流す
+start: "2026-11-20T00:00:00.000Z"
+speed: 60
+duration_s: 86400
+seed: 42
+devices:
+  - device_id: mcu-cpp-01
+    type: mcu_cpp_01
+    initial_mode: auto
+    local_rules:
+      fan_main: 200       # 作品02のローカルルールの代わり（常時の弱い換気）
+    signals:
+      temp_air: {kind: diurnal, mean: 24.0, amplitude: 6.0, peak_hour: 14, noise: 0.2}
+      humidity: {kind: diurnal, mean: 55.0, amplitude: -10.0, peak_hour: 14, noise: 1.0}
+      pressure: {kind: constant, value: 1013.2, noise: 0.3}
+      lux: {kind: daylight, max: 20000, sunrise_hour: 6, sunset_hour: 18, noise: 150}
+      soil: {kind: soil, start: 45.0, decay_per_hour: 0.8, refill_per_pump_s: 0.2, noise: 0.1}
