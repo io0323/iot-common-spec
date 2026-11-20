@@ -96,42 +96,107 @@
       "maximum": 600
     },
     "op_args": {
-      "description": "op ごとの検査。set_actuator は args.id と args.level（第3章）が必須で、lease_s の範囲を検査する。ほかの op の args は未定義（open-questions #5）で、lease_s は無視する（#13）",
-      "if": {
-        "properties": {
-          "op": {
-            "const": "set_actuator"
-          }
-        },
-        "required": [
-          "op"
-        ]
-      },
-      "then": {
-        "required": [
-          "args"
-        ],
-        "properties": {
-          "args": {
-            "type": "object",
+      "description": "op ごとの検査（第3章、v0.2.1 #5）。set_actuator は args.id・args.level が必須で lease_s の範囲を検査する。release は args.id、set_mode は args.mode（文字列。取りうる値はデバイスプロファイルの modes）が必須。get_status は引数なし。set_param の引数は未定義。set_actuator 以外の lease_s は無視する（#13）",
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "set_actuator"
+              }
+            },
             "required": [
-              "id",
-              "level"
+              "op"
+            ]
+          },
+          "then": {
+            "required": [
+              "args"
             ],
             "properties": {
-              "id": {
-                "$ref": "#/$defs/actuator_id"
+              "args": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "level"
+                ],
+                "properties": {
+                  "id": {
+                    "$ref": "#/$defs/actuator_id"
+                  },
+                  "level": {
+                    "$ref": "#/$defs/level"
+                  }
+                }
               },
-              "level": {
-                "$ref": "#/$defs/level"
+              "lease_s": {
+                "$ref": "#/$defs/lease_s"
               }
             }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "release"
+              }
+            },
+            "required": [
+              "op"
+            ]
           },
-          "lease_s": {
-            "$ref": "#/$defs/lease_s"
+          "then": {
+            "required": [
+              "args"
+            ],
+            "properties": {
+              "args": {
+                "type": "object",
+                "required": [
+                  "id"
+                ],
+                "properties": {
+                  "id": {
+                    "$ref": "#/$defs/actuator_id"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "set_mode"
+              }
+            },
+            "required": [
+              "op"
+            ]
+          },
+          "then": {
+            "required": [
+              "args"
+            ],
+            "properties": {
+              "args": {
+                "type": "object",
+                "required": [
+                  "mode"
+                ],
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            }
           }
         }
-      }
+      ]
     },
     "cmd_reason": {
       "description": "cmd/ack の reason（第3章）",
@@ -191,6 +256,18 @@
           "$ref": "#/$defs/uint32"
         }
       }
+    },
+    "owner": {
+      "description": "出力の持ち主（v0.2.1 #10・#24）。interlock＝デバイスの安全制限が効いている、safety〜schedule＝03 の指令のリース中でその priority、local＝デバイス自身のルールや本体ボタン、none＝既定値",
+      "enum": [
+        "interlock",
+        "safety",
+        "manual",
+        "auto",
+        "schedule",
+        "local",
+        "none"
+      ]
     }
   }
 }

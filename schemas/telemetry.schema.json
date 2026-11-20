@@ -54,7 +54,7 @@
           "type": "string"
         },
         "actuators": {
-          "description": "任意（第3章）",
+          "description": "任意（第3章）。owner も任意（v0.2.1 #24）",
           "type": "array",
           "items": {
             "type": "object",
@@ -70,8 +70,7 @@
                 "$ref": "common.schema.json#/$defs/level"
               },
               "owner": {
-                "description": "任意。値は未定義（open-questions #10・#24）。UART 経由のデバイスには出力の持ち主の情報がないため付けない",
-                "type": "string"
+                "$ref": "common.schema.json#/$defs/owner"
               }
             }
           }

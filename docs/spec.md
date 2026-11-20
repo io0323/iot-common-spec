@@ -74,7 +74,7 @@ JSON上の値は浮動小数点数で、上記の単位そのものを表す（�
 
 | kind | payloadの主な項目 |
 |---|---|
-| telemetry | `readings[]`：`{channel, value, unit, quality}`。`actuators[]`：`{id, level, owner}`（任意）。`device_state`（任意の文字列。デバイス内の状態名。v0.2.1で追加） |
+| telemetry | `readings[]`：`{channel, value, unit, quality}`。`actuators[]`：`{id, level, owner}`（任意。`owner` も任意で、値は `interlock`・`safety`・`manual`・`auto`・`schedule`・`local`・`none`。v0.2.1で確定）。`device_state`（任意の文字列。デバイス内の状態名。v0.2.1で追加） |
 | event | `code`, `severity`, `message`（任意）, `channel`（任意）, `value`（任意）, `detail`（任意のobject） |
 | state | `status`（online／offline）, `mode`, `channels[]`：`{channel, unit, period_ms}`, `actuators[]`：`{id, min, max, max_on_s}`, `fw_version` |
 | cmd | 下記 |
@@ -102,6 +102,8 @@ JSON上の値は浮動小数点数で、上記の単位そのものを表す（�
 ```
 
 - `op`：`set_actuator`、`release`、`set_mode`、`set_param`、`get_status`。`level` は0–1000‰
+- `args`（v0.2.1で確定）：`set_actuator` は `id` と `level`、`release` は `id`、`set_mode` は `mode`（文字列。取りうる値はデバイスプロファイルの `modes` で定める）が必須。`get_status` は引数なし。`set_param` の引数は未定義で、受けたデバイスは `unknown_op` で拒否してよい
+- telemetry の `owner`（v0.2.1で確定）：`interlock`＝デバイスの安全制限が効いている、`safety`〜`schedule`＝03の指令のリース中で値はその `priority`、`local`＝デバイス自身のルールや本体ボタン、`none`＝既定値
 - `status`：`accepted`（受理、実行中）、`done`、`rejected`、`failed`。即時に終わる指令は `accepted` を飛ばして `done` を返してよい
 - `limited: true`：デバイス側の安全制限で値を丸めた。実際の値を `applied` に入れる
 - `reason`（拒否・失敗時）：`unsafe`、`invalid_arg`、`unknown_op`、`unknown_target`、`expired`、`busy`、`internal`
@@ -278,6 +280,9 @@ JSON上の値は浮動小数点数で、上記の単位そのものを表す（�
 - **状態名**：TELEMETRYの `state` はtelemetryの任意項目 `device_state` に、EVENTの `from`・`to` はeventの `detail.from_state`・`detail.to_state` に、いずれもプロファイルの状態名で入れる
 - **fw_version**：`fw_version:u16` は上位バイト＝メジャー、下位バイト＝マイナーで `"{major}.{minor}"` とする（例：`0x0102` → `"1.2"`）
 - **applied**：ACKの `applied:u16` は、出力を扱うop（SET_FAN_OVERRIDE）のときだけcmd/ackの `applied` に `{"level": n}` として入れる。それ以外のopでは `applied` を付けない
+- **ttl_s**：リースを持たないop（CLEAR_OVERRIDE・SET_THRESHOLD・GET_STATUS・GET_DIAG）のCMDでは `ttl_s` を0にし、受けた側は無視する
+- **変換できない値**：対応表やプロファイルにない値を含むフレームと、変換結果がJSON Schemaに合わないフレームは、フレームごと破棄して理由ごとに件数を数える（第5章「値の形式不正」）。作品01はrejected・failedのACKでは必ず `reason` を入れる
+- **STATE待ち**：起動直後と再起動の検知後は、新しいSTATEを受けるまでTELEMETRY・EVENT・ACKを変換せずに破棄する（TELEMETRYの破棄件数は記録する）。このため作品01は起動後に STATE → BOOTイベント の順に送る
 - **CMDのargs**：SET_FAN_OVERRIDEは `duty_pm:u16`、SET_THRESHOLDは `warn_c100:i16, crit_c100:i16, hyst_c100:i16`、CLEAR_OVERRIDE・GET_STATUS・GET_DIAGは引数なし（`set_param` の引数は未定）
 
 STATEが破損で失われた場合に備え、作品03は `uptime_ms` が減ったら再起動とみなしてGET_STATUSでSTATEを求める。新しいSTATEを受けるまでのTELEMETRYは変換せずに破棄し、件数を記録する（古い `boot_id` を付けたまま送らないため）。
