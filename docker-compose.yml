@@ -1,0 +1,6 @@
+# MQTT ブローカー（Mosquitto）。設定・ACL は Phase 5 で deploy/mosquitto/ に入れる。
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
