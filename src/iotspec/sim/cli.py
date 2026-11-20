@@ -2,6 +2,9 @@
 
     uv run iotspec-sim run <scenario> [--speed N] [--broker host:port]
     uv run iotspec-sim run <scenario> --speed 0 --dump out.jsonl   # ブローカーなしで一括生成
+    uv run iotspec-sim run uart_link --uart /dev/ttyUSB0             # 既存のシリアルポートを開く
+
+mcu-c-01 だけのシナリオで --uart を省くと、自分で pty を作り、相手が開くパスを表示する。
 
 <scenario> はシナリオ名（sim/scenarios/{name}.yaml）かファイルのパス。
 接続先は --broker、なければ環境変数 IOTSPEC_MQTT_URL（既定 mqtt://localhost:1883）。
@@ -35,6 +38,10 @@ def _parser() -> argparse.ArgumentParser:
     run.add_argument("--broker", help="host:port（省略時は IOTSPEC_MQTT_URL）")
     run.add_argument("--duration-s", type=float, help="シナリオの継続時間を上書きする（仮想秒）")
     run.add_argument(
+        "--uart",
+        help="mcu_c_01・gw_01_lite が開くシリアルポートのパス（device モード。v0.2.1 #2）",
+    )
+    run.add_argument(
         "--dump", type=Path, help="MQTT に送らず、電文を JSON Lines でこのファイルに書く"
     )
     return parser
@@ -54,6 +61,10 @@ def main(argv: list[str] | None = None) -> int:
         from dataclasses import replace
 
         scenario = replace(scenario, duration_s=args.duration_s)
+    if args.uart is not None:
+        for config in scenario.devices:
+            if config.type in ("mcu_c_01", "gw_01_lite"):
+                config.options["uart_path"] = args.uart
     simulation = Simulation(scenario, speed=args.speed)
     if args.dump is not None:
         messages = simulation.run_batch()

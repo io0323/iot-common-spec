@@ -1,0 +1,32 @@
+# iot-common-spec の ACL（共通仕様 v0.2.1 第8章）
+# ユーザー名は device_id と同じ。トピックは iot/v1/{site}/{device_id}/{kind}
+# 書かれていない発行・購読はすべて拒否される。
+
+# ---- すべてのデバイス：自分の device_id のトピックにだけ telemetry・event・state・cmd/ack を発行できる
+pattern write iot/v1/+/%u/telemetry
+pattern write iot/v1/+/%u/event
+pattern write iot/v1/+/%u/state
+pattern write iot/v1/+/%u/cmd/ack
+# 自分宛ての cmd と request/ack は読める
+pattern read iot/v1/+/%u/cmd
+pattern read iot/v1/+/%u/request/ack
+
+# ---- 作品03（gw-01）：cmd と request/ack を発行できる唯一のデバイス。全体を購読する
+user gw-01
+topic write iot/v1/+/+/cmd
+topic write iot/v1/+/app-01/request/ack
+# UART から変換した mcu-c-01 名義の電文
+topic write iot/v1/+/mcu-c-01/telemetry
+topic write iot/v1/+/mcu-c-01/event
+topic write iot/v1/+/mcu-c-01/state
+topic write iot/v1/+/mcu-c-01/cmd/ack
+topic read iot/#
+
+# ---- 作品04（app-01）：request を発行できる唯一のデバイス。全体を購読する
+user app-01
+topic write iot/v1/+/app-01/request
+topic read iot/#
+
+# ---- 観測用（契約テスト・結合テスト）：読むだけ
+user observer
+topic read iot/#

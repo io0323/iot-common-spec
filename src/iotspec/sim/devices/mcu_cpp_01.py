@@ -154,6 +154,9 @@ class McuCpp01:
     def cmd_topic(self) -> str:
         return self.topic(KIND_CMD)
 
+    def subscriptions(self) -> list[str]:
+        return [self.cmd_topic]
+
     @property
     def boot_id(self) -> str:
         return self.builder.boot_id

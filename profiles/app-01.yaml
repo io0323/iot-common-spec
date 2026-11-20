@@ -1,0 +1,5 @@
+# 作品04（Python × Raspberry Pi、アプリ）の代役のプロファイル。計測値と出力は持たない
+device_id: app-01
+transport: mqtt
+channels: []
+actuators: []
