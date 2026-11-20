@@ -29,6 +29,7 @@ INVALID = sorted(INVALID_DIR.glob("*.json"))
 EXPECTED: dict[str, tuple[str, str]] = {
     "envelope__bad_ulid": ("/msg_id", "pattern"),
     "envelope__missing_boot_id": ("", "required"),
+    "envelope__bad_boot_id": ("/boot_id", "pattern"),
     "envelope__ts_not_utc": ("/ts", "pattern"),
     "envelope__ts_without_millis": ("/ts", "pattern"),
     "envelope__seq_over_uint32": ("/seq", "maximum"),

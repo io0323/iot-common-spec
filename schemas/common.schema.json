@@ -61,8 +61,13 @@
       "description": "指令・要求の操作（第3章）",
       "enum": ["set_actuator", "release", "set_mode", "set_param", "get_status"]
     },
+    "boot_id": {
+      "description": "起動ごとに変わるID。全デバイスで16進小文字8桁（32ビット）。同じデバイスの前回の起動と高い確率で異なればよく、全体での一意性は求めない（第3章、v0.2.1 で確定）",
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}$"
+    },
     "lease_s": {
-      "description": "リース秒数。既定60秒、上限600秒（第4章）",
+      "description": "リース秒数。省略可で、省略時は既定60秒とみなす。上限600秒。意味を持つのは set_actuator だけで、他の op では無視する（第4章、v0.2.1 で確定）",
       "type": "integer",
       "minimum": 1,
       "maximum": 600
@@ -103,11 +108,7 @@
         "msg_id": { "$ref": "#/$defs/ulid" },
         "device_id": { "$ref": "#/$defs/device_id" },
         "seq": { "$ref": "#/$defs/uint32" },
-        "boot_id": {
-          "description": "起動ごとに変わる短いID。形式は未定義のため空でない文字列だけを検査する（open-questions #9）",
-          "type": "string",
-          "minLength": 1
-        },
+        "boot_id": { "$ref": "#/$defs/boot_id" },
         "ts": { "$ref": "#/$defs/ts" },
         "ts_source": { "enum": ["device", "gateway"] },
         "payload": { "type": "object" },
