@@ -1,0 +1,19 @@
+{
+  "schema": "iot.v1.event",
+  "msg_id": "01JD3Q8Z5K7M2N4P6R8T0V0006",
+  "device_id": "mcu-cpp-01",
+  "seq": 7,
+  "boot_id": "7f3a9c01",
+  "ts": "2026-11-20T06:00:12.345Z",
+  "ts_source": "device",
+  "payload": {
+    "code": "THRESHOLD_EXCEEDED",
+    "severity": "critical",
+    "message": "temp_air >= 45.0",
+    "channel": "temp_air",
+    "value": 45.0,
+    "detail": {
+      "threshold": 45.0
+    }
+  }
+}

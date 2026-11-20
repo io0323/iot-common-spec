@@ -1,0 +1,24 @@
+{
+  "schema": "iot.v1.request",
+  "msg_id": "01JD3Q8Z5K7M2N4P6R8T0V0029",
+  "device_id": "app-01",
+  "seq": 5,
+  "boot_id": "a4b5c6d7",
+  "ts": "2026-11-20T21:59:59.950Z",
+  "ts_source": "device",
+  "payload": {
+    "request_id": "01JD3S0B5K7M2N4P6R8T0V2X4Y",
+    "kind": "manual",
+    "target": "mcu-cpp-01",
+    "op": "set_actuator",
+    "args": {
+      "id": "pump",
+      "level": 1000
+    },
+    "lease_s": 20,
+    "schedule": {
+      "id": 12,
+      "planned_at": "2026-11-20T22:00:00.000Z"
+    }
+  }
+}

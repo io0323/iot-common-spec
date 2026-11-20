@@ -1,0 +1,67 @@
+{
+  "schema": "iot.v1.state",
+  "msg_id": "01JD3Q8Z5K7M2N4P6R8T0V0008",
+  "device_id": "mcu-cpp-01",
+  "seq": 0,
+  "boot_id": "7f3a9c01",
+  "ts": "2026-11-20T06:00:12.345Z",
+  "ts_source": "device",
+  "payload": {
+    "status": "online",
+    "mode": "auto",
+    "channels": [
+      {
+        "channel": "temp_air",
+        "unit": "celsius",
+        "period_ms": 1000
+      },
+      {
+        "channel": "humidity",
+        "unit": "pct_rh",
+        "period_ms": 1000
+      },
+      {
+        "channel": "pressure",
+        "unit": "hPa",
+        "period_ms": 1000
+      },
+      {
+        "channel": "lux",
+        "unit": "lux",
+        "period_ms": 1000
+      },
+      {
+        "channel": "soil",
+        "unit": "pct",
+        "period_ms": 60000
+      }
+    ],
+    "actuators": [
+      {
+        "id": "fan_main",
+        "min": 0,
+        "max": 1000,
+        "max_on_s": null
+      },
+      {
+        "id": "led_grow",
+        "min": 0,
+        "max": 1000,
+        "max_on_s": null
+      },
+      {
+        "id": "pump",
+        "min": 0,
+        "max": 1000,
+        "max_on_s": 30
+      },
+      {
+        "id": "buzzer",
+        "min": 0,
+        "max": 1000,
+        "max_on_s": 10
+      }
+    ],
+    "fw_version": "0.2.0"
+  }
+}

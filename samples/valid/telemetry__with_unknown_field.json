@@ -1,0 +1,16 @@
+{
+  "schema": "iot.v1.telemetry",
+  "msg_id": "01JD3Q8Z5K7M2N4P6R8T0V0004",
+  "device_id": "mcu-cpp-01",
+  "seq": 2,
+  "boot_id": "7f3a9c01",
+  "ts": "2026-11-20T06:00:12.345Z",
+  "ts_source": "device",
+  "trace": "forward-compat",
+  "payload": {
+    "readings": [],
+    "future_field": {
+      "x": 1
+    }
+  }
+}

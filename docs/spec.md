@@ -296,12 +296,16 @@ iot-common-spec/
 ├── schemas/                   # JSON Schema（kindごと）
 ├── samples/                   # 正常・異常のサンプル電文
 ├── uart/golden/               # UARTゴールデンフレーム（16進＋対応するJSON）
-├── sim/                       # 共通シミュレータ（Python）
-│   ├── devices/               # mcu-c-01（仮想シリアル）、mcu-cpp-01（MQTT）、gw-01（簡易版）
-│   └── scenarios/             # シナリオ（YAML）
+├── src/iotspec/               # 共通ライブラリ（Pythonパッケージ。他作品からimportできる）
+│   ├── sim/                   # 共通シミュレータ
+│   │   └── devices/           # mcu-c-01（仮想シリアル）、mcu-cpp-01（MQTT）、gw-01（簡易版）、app-01
+│   └── contract/              # 契約テストキット
+├── sim/scenarios/             # シナリオ（YAML）
 ├── tools/validate.py          # 電文をSchemaで検証するCLI
 └── docker-compose.yml         # Mosquitto（ACL付き）＋シミュレータ
 ```
+
+v0.2.1（文書修正）：規範部分（Schema・トピック・フレーム）の変更はない。
 
 ### シミュレータが代用できるもの
 

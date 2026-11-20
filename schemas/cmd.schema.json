@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/io0323/iot-common-spec/schemas/cmd.schema.json",
+  "title": "cmd：指令（03 → 各デバイス）",
+  "allOf": [
+    {
+      "$ref": "common.schema.json#/$defs/envelope"
+    }
+  ],
+  "properties": {
+    "schema": {
+      "const": "iot.v1.cmd"
+    },
+    "payload": {
+      "$ref": "#/$defs/payload"
+    }
+  },
+  "$defs": {
+    "payload": {
+      "type": "object",
+      "required": [
+        "cmd_id",
+        "op",
+        "priority"
+      ],
+      "properties": {
+        "cmd_id": {
+          "$ref": "common.schema.json#/$defs/ulid"
+        },
+        "op": {
+          "$ref": "common.schema.json#/$defs/op"
+        },
+        "args": {
+          "type": "object"
+        },
+        "priority": {
+          "description": "第4章「優先度」",
+          "enum": [
+            "safety",
+            "manual",
+            "auto",
+            "schedule"
+          ]
+        },
+        "lease_s": {
+          "$ref": "common.schema.json#/$defs/lease_s"
+        },
+        "origin": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string"
+            },
+            "ref": {
+              "type": "string"
+            }
+          }
+        },
+        "expires_at": {
+          "$ref": "common.schema.json#/$defs/ts"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "common.schema.json#/$defs/op_args"
+        }
+      ]
+    }
+  }
+}

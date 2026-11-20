@@ -1,0 +1,19 @@
+{
+  "schema": "iot.v1.cmd",
+  "msg_id": "01JD3Q8Z5K7M2N4P6R8T0V0013",
+  "device_id": "gw-01",
+  "seq": 42,
+  "boot_id": "7f3a9c01",
+  "ts": "2026-11-20T06:00:12.345Z",
+  "ts_source": "device",
+  "payload": {
+    "cmd_id": "01JD3Q8Z5K7M2N4P6R8T0V0012",
+    "op": "set_actuator",
+    "args": {
+      "id": "pump",
+      "level": -1
+    },
+    "priority": "safety",
+    "lease_s": 1
+  }
+}

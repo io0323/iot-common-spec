@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/io0323/iot-common-spec/schemas/request.schema.json",
+  "title": "request：手動操作・スケジュール実行の要求（04 → 03）",
+  "allOf": [
+    {
+      "$ref": "common.schema.json#/$defs/envelope"
+    }
+  ],
+  "properties": {
+    "schema": {
+      "const": "iot.v1.request"
+    },
+    "payload": {
+      "$ref": "#/$defs/payload"
+    }
+  },
+  "$defs": {
+    "payload": {
+      "type": "object",
+      "required": [
+        "request_id",
+        "kind",
+        "target",
+        "op"
+      ],
+      "properties": {
+        "request_id": {
+          "$ref": "common.schema.json#/$defs/ulid"
+        },
+        "kind": {
+          "enum": [
+            "manual",
+            "schedule"
+          ]
+        },
+        "target": {
+          "$ref": "common.schema.json#/$defs/device_id"
+        },
+        "op": {
+          "$ref": "common.schema.json#/$defs/op"
+        },
+        "args": {
+          "type": "object"
+        },
+        "lease_s": {
+          "$ref": "common.schema.json#/$defs/lease_s"
+        },
+        "schedule": {
+          "type": "object",
+          "required": [
+            "id",
+            "planned_at"
+          ],
+          "properties": {
+            "id": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "planned_at": {
+              "$ref": "common.schema.json#/$defs/ts"
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "common.schema.json#/$defs/op_args"
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "schedule"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "schedule"
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/io0323/iot-common-spec/schemas/state.schema.json",
+  "title": "state：稼働状態と機器一覧",
+  "allOf": [
+    {
+      "$ref": "common.schema.json#/$defs/envelope"
+    }
+  ],
+  "properties": {
+    "schema": {
+      "const": "iot.v1.state"
+    },
+    "payload": {
+      "$ref": "#/$defs/payload"
+    }
+  },
+  "$defs": {
+    "payload": {
+      "type": "object",
+      "required": [
+        "status",
+        "mode",
+        "channels",
+        "actuators",
+        "fw_version"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "online",
+            "offline"
+          ]
+        },
+        "mode": {
+          "description": "値は機器ごと（未定義）",
+          "type": "string"
+        },
+        "channels": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "channel",
+              "unit",
+              "period_ms"
+            ],
+            "properties": {
+              "channel": {
+                "$ref": "common.schema.json#/$defs/channel"
+              },
+              "unit": {
+                "$ref": "common.schema.json#/$defs/unit"
+              },
+              "period_ms": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          }
+        },
+        "actuators": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "min",
+              "max",
+              "max_on_s"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "common.schema.json#/$defs/actuator_id"
+              },
+              "min": {
+                "type": "number"
+              },
+              "max": {
+                "type": "number"
+              },
+              "max_on_s": {
+                "description": "連続出力の上限秒。上限なしは null（open-questions #10）",
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "fw_version": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

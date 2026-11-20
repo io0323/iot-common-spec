@@ -1,0 +1,15 @@
+{
+  "schema": "iot.v1.request_ack",
+  "msg_id": "01JD3Q8Z5K7M2N4P6R8T0V0034",
+  "device_id": "gw-01",
+  "seq": 9,
+  "boot_id": "b0a1c2d3",
+  "ts": "2026-11-20T22:00:00.120Z",
+  "ts_source": "device",
+  "payload": {
+    "request_id": "01JD3S0B5K7M2N4P6R8T0V2X4Y",
+    "status": "pending",
+    "cmd_id": "01JD3R0C5K7M2N4P6R8T0V2X4Y",
+    "reason": null
+  }
+}
