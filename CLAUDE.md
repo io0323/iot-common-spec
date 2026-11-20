@@ -11,7 +11,7 @@ JSON Schema、サンプル電文、UART ゴールデンフレーム、共通シ�
 
 ## 技術スタック
 - Python 3.12、uv で依存管理、パッケージ名 `iotspec`（src レイアウト）
-- jsonschema（Draft 2020-12）、python-ulid、PyYAML、aiomqtt
+- jsonschema（Draft 2020-12）、python-ulid、PyYAML、aiomqtt、pyserial（仮想シリアルの「指定したデバイスパスを開くモード」用）
 - テスト：pytest、pytest-asyncio、hypothesis
 - 静的解析：ruff（lint + format）、mypy --strict
 - MQTT ブローカー：Mosquitto（docker compose）

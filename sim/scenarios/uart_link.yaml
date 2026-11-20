@@ -1,0 +1,23 @@
+# UART のつながり：gw-01 簡易版（作品03の上位役）と mcu-c-01 の代役。CMD → ACK、重複 cmd_ref、HEARTBEAT の途絶、破損フレーム
+name: uart_link
+description: gw-01 簡易版が HEARTBEAT と CMD を送り、mcu-c-01 の代役が ACK・TELEMETRY・EVENT・STATE を返す
+start: "2026-11-20T06:00:00.000Z"
+speed: 10
+duration_s: 90
+seed: 5
+devices:
+  - device_id: mcu-c-01
+    type: mcu_c_01
+    local_rules: {fan_main: 100}
+    signals:
+      temp_board: {kind: diurnal, mean: 30.0, amplitude: 2.0, peak_hour: 14, noise: 0.05}
+  - device_id: gw-01
+    type: gw_01_lite
+    uart_commands:
+      - {at_s: 3, op: set_actuator, args: {id: fan_main, level: 800}, lease_s: 60}
+      - {at_s: 5, op: get_status}
+      - {at_s: 8, op: release, args: {id: fan_main}, repeat: 1}
+      - {at_s: 12, op: set_actuator, args: {id: fan_main, level: 600}, lease_s: 120}
+faults:
+  - {type: corrupt_frame, device: mcu-c-01, at_s: 20, count: 2}
+  - {type: heartbeat_silence, device: gw-01, at_s: 40, duration_s: 15}

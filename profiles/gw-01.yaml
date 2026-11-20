@@ -1,0 +1,5 @@
+# 作品03（C++ × Raspberry Pi、ゲートウェイ）の簡易版のプロファイル。計測値と出力は持たない
+device_id: gw-01
+transport: mqtt
+channels: []
+actuators: []

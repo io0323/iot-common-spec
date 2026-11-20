@@ -7,11 +7,27 @@
 from __future__ import annotations
 
 from collections import deque
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import Any
 
-from iotspec.constants import SEQ_DEDUP_CAPACITY
+from iotspec.constants import KIND_STATE, SCHEMA_NAMES, SEQ_DEDUP_CAPACITY
 
-__all__ = ["SeqDedupWindow"]
+__all__ = ["SeqDedupWindow", "exempt_from_seq_checks"]
+
+
+def exempt_from_seq_checks(message: Mapping[str, Any]) -> bool:
+    """seq による重複・欠損・遅延の判定から外す電文なら True（v0.2.1 #29）。
+
+    status: offline の state（LWT と正常終了時の offline）は、接続時に作られ seq を進めないので、
+    受信側は seq の判定に使わず必ず受け入れる。
+    """
+    payload = message.get("payload")
+    return (
+        message.get("schema") == SCHEMA_NAMES[KIND_STATE]
+        and isinstance(payload, Mapping)
+        and payload.get("status") == "offline"
+    )
 
 
 @dataclass
@@ -50,6 +66,14 @@ class SeqDedupWindow:
         if len(window.order) > self.capacity:
             window.seen.discard(window.order.popleft())
         return False
+
+    def accept(self, message: Mapping[str, Any], kind: str) -> bool:
+        """電文を受け入れるなら True（重複なら False）。offline の state は記憶せずに受け入れる。"""
+        if exempt_from_seq_checks(message):
+            return True
+        return not self.is_duplicate(
+            str(message["device_id"]), str(message["boot_id"]), kind, int(message["seq"])
+        )
 
     def remembered(self, device_id: str, kind: str) -> int:
         """その発信元・kind で記憶している seq の数。"""

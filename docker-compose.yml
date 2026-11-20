@@ -1,6 +1,22 @@
-# MQTT ブローカー（Mosquitto）。設定・ACL は Phase 5 で deploy/mosquitto/ に入れる。
+# Mosquitto（ACL・パスワード付き）とシミュレータ。
+# 先にパスワードファイルを作る：deploy/mosquitto/gen_passwd.sh
+#   docker compose up -d mosquitto
+#   SCENARIO=normal_day docker compose up sim
 services:
   mosquitto:
     image: eclipse-mosquitto:2
     ports:
       - "1883:1883"
+    volumes:
+      - ./deploy/mosquitto:/mosquitto/config:ro
+
+  sim:
+    build:
+      context: .
+      dockerfile: deploy/sim/Dockerfile
+    depends_on:
+      - mosquitto
+    environment:
+      IOTSPEC_MQTT_URL: mqtt://mosquitto:1883
+      IOTSPEC_MQTT_PASSWORD: ${IOTSPEC_MQTT_PASSWORD:-iotspec-dev}
+    command: ["run", "${SCENARIO:-normal_day}", "--speed", "${SPEED:-60}"]

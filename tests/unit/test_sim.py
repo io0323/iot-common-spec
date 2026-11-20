@@ -15,13 +15,17 @@ import pytest
 
 from iotspec import constants as c
 from iotspec.clock import VirtualClock, format_ts, parse_ts
+from iotspec.dedup import SeqDedupWindow, exempt_from_seq_checks
 from iotspec.envelope import EnvelopeBuilder, SeqCounter
 from iotspec.profile import load_profile
 from iotspec.schema import validate
 from iotspec.sim.devices import Outgoing
 from iotspec.sim.devices.mcu_cpp_01 import (
     FAN_INTERLOCK_CHANNEL,
+    FAN_INTERLOCK_RELEASE_HOLD_S,
+    FAN_INTERLOCK_RELEASE_TEMP_C,
     FAN_INTERLOCK_TEMP_C,
+    PUMP_RESTART_DELAY_S,
     CmdDedup,
     McuCpp01,
 )
@@ -398,8 +402,12 @@ def test_pump_is_stopped_after_max_on_s_and_ack_is_limited() -> None:
     # 更新（新しい cmd_id）が来てもインターロックは外れない
     renew = _send_cmd(device, "set_actuator", {"id": "pump", "level": 1000}, lease_s=c.LEASE_MAX_S)
     assert renew["limited"] is True and renew["applied"] == {"level": 0}
-    # 要求が0になればインターロックを解除する
+    # 要求が0に戻っても、停止から PUMP_RESTART_DELAY_S 経つまでは解除しない（#27）
+    stopped_at = clock.now()
     _send_cmd(device, "release", {"id": "pump"})
+    assert _owner(device, "pump") == (0, "interlock")
+    clock.set(stopped_at + timedelta(seconds=PUMP_RESTART_DELAY_S))
+    device.tick()
     assert _owner(device, "pump") == (0, "none")
     assert "pump" not in device._interlocked
 
@@ -574,3 +582,137 @@ def test_fault_scenarios_produce_expected_anomalies() -> None:
     assert min(jumps) == pytest.approx(-skew.offset_s + 1)  # 終わりで戻る
     for o in out:
         assert validate(o.message) == []
+
+
+# ---------------------------------------------------------------- #27・#29
+
+
+class _Scripted:
+    """値を順に返す信号（テスト用）。"""
+
+    def __init__(self, values: list[float]) -> None:
+        self.values = list(values)
+
+    def sample(self, t: datetime, dt_s: float, inputs: Any, rng: Any) -> float:
+        return self.values.pop(0) if len(self.values) > 1 else self.values[0]
+
+
+def _scripted_device(temps: list[float]) -> tuple[McuCpp01, VirtualClock]:
+    clock = VirtualClock(T0)
+    signals = SignalSet(
+        {
+            ch.channel: (
+                _Scripted(temps) if ch.channel == FAN_INTERLOCK_CHANNEL else Constant(50.0)
+            )
+            for ch in PROFILE.channels
+        },
+        seed=1,
+        device_id=PROFILE.device_id,
+    )
+    device = McuCpp01(PROFILE, clock, signals, boot_id="0000c0de")
+    device.start()
+    device.drain()
+    return device, clock
+
+
+def _interlock_events(device: McuCpp01) -> list[str]:
+    return [
+        str(o.message["payload"]["code"])  # type: ignore[index]
+        for o in device.drain()
+        if o.kind == c.KIND_EVENT and str(o.message["payload"]["code"]).startswith("INTERLOCK")  # type: ignore[index]
+    ]
+
+
+def test_fan_interlock_does_not_flap_with_noise_at_threshold() -> None:
+    """45℃付近のノイズでは INTERLOCK_ACTIVE／RELEASED を繰り返さない（#27）。"""
+    noisy = [FAN_INTERLOCK_TEMP_C + (0.1 if i % 2 else -0.1) for i in range(120)]
+    device, clock = _scripted_device([25.0, *noisy])
+    events: list[str] = []
+    for _ in range(len(noisy)):
+        clock.advance(1)
+        device.tick()
+        events += _interlock_events(device)
+    assert events == ["INTERLOCK_ACTIVE"]
+    assert _owner(device, "fan_main") == (1000, "interlock")
+
+
+def test_fan_interlock_releases_after_cool_hold() -> None:
+    hold = int(FAN_INTERLOCK_RELEASE_HOLD_S)
+    below = FAN_INTERLOCK_RELEASE_TEMP_C - 0.1
+    between = FAN_INTERLOCK_RELEASE_TEMP_C + 0.5
+    temps = [25.0, FAN_INTERLOCK_TEMP_C, *[below] * (hold - 1), between, *[below] * (hold + 1)]
+    device, clock = _scripted_device(temps)
+    released_at: list[int] = []
+    for step in range(1, len(temps)):
+        clock.advance(1)
+        device.tick()
+        if "INTERLOCK_RELEASED" in _interlock_events(device):
+            released_at.append(step)
+    # 43℃未満が途中で途切れたら数え直し、43℃未満が10秒続いた時点で解除する
+    assert released_at == [1 + (hold - 1) + 1 + hold + 1]
+    assert _owner(device, "fan_main") == (0, "none")
+
+
+def test_pump_restarts_only_after_zero_and_delay() -> None:
+    device, clock = _device()
+    _send_cmd(device, "set_actuator", {"id": "pump", "level": 1000}, lease_s=c.LEASE_MAX_S)
+    for _ in range(int(PUMP_MAX_ON_S)):
+        clock.advance(1)
+        device.tick()
+    stopped_at = clock.now()
+    assert _owner(device, "pump") == (0, "interlock")
+    # 60秒経っても、要求が一度も0に戻っていなければ再開しない
+    clock.set(stopped_at + timedelta(seconds=PUMP_RESTART_DELAY_S + 5))
+    _send_cmd(device, "set_actuator", {"id": "pump", "level": 1000}, lease_s=c.LEASE_MAX_S)
+    assert _owner(device, "pump") == (0, "interlock")
+    # 要求が0に戻り（release）、停止から60秒以上経っていれば、次の指令で再開する
+    _send_cmd(device, "release", {"id": "pump"})
+    assert _owner(device, "pump") == (0, "none")
+    ack = _send_cmd(
+        device, "set_actuator", {"id": "pump", "level": 800}, lease_s=int(PUMP_MAX_ON_S)
+    )
+    assert ack["applied"] == {"level": 800}
+    assert _owner(device, "pump") == (800, "auto")
+
+
+def test_lwt_does_not_advance_state_seq_and_is_always_accepted() -> None:
+    """#29：LWT は seq を進めない。受信側は offline の state を seq の判定から外す。"""
+    clock = VirtualClock(T0)
+    signals = SignalSet(
+        {ch.channel: Constant(20.0) for ch in PROFILE.channels}, 1, PROFILE.device_id
+    )
+    device = McuCpp01(PROFILE, clock, signals)
+    will = device.will()
+    device.start()
+    online = next(o for o in device.drain() if o.kind == c.KIND_STATE)
+    assert will.message["seq"] == online.message["seq"] == 0
+    assert validate(will.message) == []
+    assert exempt_from_seq_checks(will.message)
+    assert not exempt_from_seq_checks(online.message)
+
+    window = SeqDedupWindow()
+    assert window.accept(online.message, c.KIND_STATE) is True
+    assert window.accept(online.message, c.KIND_STATE) is False  # 通常の重複は捨てる
+    # LWT は online と同じ seq でも、何度来ても受け入れ、記憶もしない
+    assert window.accept(will.message, c.KIND_STATE) is True
+    assert window.accept(will.message, c.KIND_STATE) is True
+    assert window.remembered(device.device_id, c.KIND_STATE) == 1
+    shutdown = device.shutdown()
+    assert shutdown.message["seq"] == 1 and exempt_from_seq_checks(shutdown.message)
+
+
+def test_telemetry_includes_each_channel_at_its_period() -> None:
+    """#26：telemetry には周期が来たチャネルだけを入れる（例：lux 1000ms、soil 10000ms）。"""
+    device, clock = _device()
+    periods = {ch.channel: ch.period_ms for ch in PROFILE.channels}
+    seen: dict[str, list[float]] = defaultdict(list)
+    for step in range(1, 21):
+        clock.advance(1)
+        device.tick()
+        (tel,) = [o for o in device.drain() if o.kind == c.KIND_TELEMETRY]
+        for r in tel.message["payload"]["readings"]:  # type: ignore[index]
+            seen[r["channel"]].append(step)
+    for channel, period_ms in periods.items():
+        step = period_ms / 1000
+        expected = [1 + i * step for i in range(int(20 // step))]
+        assert seen[channel] == expected, channel

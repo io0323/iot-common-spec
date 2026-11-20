@@ -8,6 +8,9 @@ on:
 jobs:
   check:
     runs-on: ubuntu-latest
+    env:
+      IOTSPEC_MQTT_URL: mqtt://localhost:1883
+      IOTSPEC_MQTT_PASSWORD: ci-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -22,3 +25,19 @@ jobs:
         run: uv run mypy src tools
       - name: pytest (unit)
         run: uv run pytest -m "not integration"
+      - name: Mosquitto（ACL・パスワード付き）
+        # パスワードファイルは実行時に作る（リポジトリには入れない）。設定ファイルを
+        # マウントする必要があるので、サービスコンテナではなく docker compose で起動する
+        run: |
+          deploy/mosquitto/gen_passwd.sh
+          docker compose up -d mosquitto
+          for i in $(seq 1 20); do
+            docker compose logs mosquitto | grep -q "running" && break
+            sleep 1
+          done
+          docker compose logs mosquitto
+      - name: pytest (integration)
+        run: uv run pytest -m integration -rs
+      - name: Mosquitto のログ
+        if: always()
+        run: docker compose logs mosquitto

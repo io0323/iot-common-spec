@@ -3,12 +3,12 @@
 device_id: mcu-cpp-01
 transport: mqtt
 
-channels:   # 計測周期は作品02の設計書に記載がないため 1000ms とする（open-questions #26）
-  - {channel: temp_air, unit: degC, period_ms: 1000}
-  - {channel: humidity, unit: pct_rh, period_ms: 1000}
-  - {channel: pressure, unit: hPa, period_ms: 1000}
+channels:   # 計測周期（v0.2.1 #26）
+  - {channel: temp_air, unit: degC, period_ms: 2000}
+  - {channel: humidity, unit: pct_rh, period_ms: 2000}
+  - {channel: pressure, unit: hPa, period_ms: 2000}
   - {channel: lux, unit: lux, period_ms: 1000}
-  - {channel: soil, unit: pct, period_ms: 1000}
+  - {channel: soil, unit: pct, period_ms: 10000}
 
 actuators:
   - {id: fan_main, min: 0, max: 1000}

@@ -9,3 +9,6 @@ dist/
 build/
 *.egg-info/
 .DS_Store
+
+# Mosquitto のパスワードファイル（deploy/mosquitto/gen_passwd.sh で作る）
+deploy/mosquitto/passwd

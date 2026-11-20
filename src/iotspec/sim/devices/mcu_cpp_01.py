@@ -38,7 +38,8 @@ from iotspec.constants import (
     SCHEMA_NAMES,
     TOPIC_FORMAT,
 )
-from iotspec.envelope import EnvelopeBuilder, SeqCounter
+from iotspec.envelope import Envelope, EnvelopeBuilder, SeqCounter
+from iotspec.ids import new_ulid
 from iotspec.lease import Lease, resolve_lease_s
 from iotspec.profile import Profile
 from iotspec.schema import validate
@@ -54,6 +55,11 @@ FAN_INTERLOCK_ACTUATOR: Final = "fan_main"
 FAN_INTERLOCK_CHANNEL: Final = "temp_air"
 FAN_INTERLOCK_TEMP_C: Final = 45.0
 """気温がこの値以上でファンを最大出力にする。"""
+FAN_INTERLOCK_RELEASE_TEMP_C: Final = 43.0
+FAN_INTERLOCK_RELEASE_HOLD_S: Final = 10.0
+"""気温が FAN_INTERLOCK_RELEASE_TEMP_C 未満のままこの秒数続いたら解除する（#27）。"""
+PUMP_RESTART_DELAY_S: Final = 60.0
+"""ポンプを連続運転の上限で止めたあと、再開できるまでの最短の秒数（#27）。"""
 FW_VERSION: Final = f"sim-{SPEC_VERSION}"
 BOOT_RESET_REASON: Final = "power_on"
 
@@ -128,9 +134,13 @@ class McuCpp01:
         self.readings: dict[str, float] = {}
         self._interlocked: set[str] = set()
         self._on_since: dict[str, datetime] = {}
-        self._locked_out: set[str] = set()
+        self._locked_out: dict[str, datetime] = {}
+        self._zeroed: set[str] = set()
+        self._fan_hot = False
+        self._fan_cool_since: datetime | None = None
         self._faulty: set[str] = set()
         self._last_sample: datetime | None = None
+        self._next_due: dict[str, datetime] = {}
         self._dedup = CmdDedup()
         self._limiters: dict[str, RateLimiter] = {}
         self._consumed: Counter[int] = Counter()
@@ -144,6 +154,9 @@ class McuCpp01:
     def cmd_topic(self) -> str:
         return self.topic(KIND_CMD)
 
+    def subscriptions(self) -> list[str]:
+        return [self.cmd_topic]
+
     @property
     def boot_id(self) -> str:
         return self.builder.boot_id
@@ -151,8 +164,12 @@ class McuCpp01:
     # ------------------------------------------------------------ 起動・周期処理
 
     def will(self) -> Outgoing:
-        """LWT（接続時に登録する offline の state。retain）。"""
-        return self._outgoing(KIND_STATE, self._state_payload("offline"))
+        """LWT（接続時に登録する offline の state。retain）。
+
+        seq のカウンタは進めず、登録時点の値（次に使う seq）を入れる（#29）。
+        受信側は status: offline の state を seq の判定から外して受け入れる。
+        """
+        return self._offline_state()
 
     def start(self) -> None:
         """起動：計測を1回行い、state（online）と BOOT イベントを送る。"""
@@ -162,10 +179,18 @@ class McuCpp01:
         self._event("BOOT", "info", detail={"reset_reason": BOOT_RESET_REASON})
 
     def tick(self) -> None:
-        """計測周期ごとの処理：計測、異常の注入、出力の評価、telemetry の送信。"""
+        """計測周期ごとの処理：計測、異常の注入、出力の評価、telemetry の送信。
+
+        tick は最も短い計測周期で呼ぶ。
+        telemetry にはその時点で周期が来たチャネルだけを入れる（#26）。
+        """
         self._sample()
         self._update_sensor_faults()
         self._evaluate()
+        now = self.clock.now()
+        due = [c for c in self.profile.channels if now >= self._next_due.get(c.channel, now)]
+        for c in due:
+            self._next_due[c.channel] = now + timedelta(milliseconds=c.period_ms)
         readings = [
             {
                 "channel": c.channel,
@@ -173,7 +198,7 @@ class McuCpp01:
                 "unit": c.unit,
                 "quality": "fault" if c.channel in self._faulty else "good",
             }
-            for c in self.profile.channels
+            for c in due
         ]
         actuators = [
             {"id": a.id, "level": self.levels[a.id], "owner": self.owners[a.id]}
@@ -182,8 +207,27 @@ class McuCpp01:
         self._send(KIND_TELEMETRY, {"readings": readings, "actuators": actuators})
 
     def shutdown(self) -> Outgoing:
-        """正常終了で送る offline の state（LWT と同じ内容。retain）。"""
-        return self._outgoing(KIND_STATE, self._state_payload("offline"))
+        """正常終了で送る offline の state（LWT と同じく seq を進めない。retain）。"""
+        return self._offline_state()
+
+    def _offline_state(self) -> Outgoing:
+        now = self.clock.now()
+        envelope = Envelope(
+            schema=SCHEMA_NAMES[KIND_STATE],
+            msg_id=new_ulid(self.clock),
+            device_id=self.device_id,
+            seq=self.builder.counter.peek(KIND_STATE),
+            boot_id=self.boot_id,
+            ts=now,
+            ts_source="device",
+            payload=self._state_payload("offline"),
+        )
+        return Outgoing(
+            topic=self.topic(KIND_STATE),
+            message=envelope.to_dict(),
+            qos=QOS_BY_KIND[KIND_STATE],
+            retain=True,
+        )
 
     def publish_state(self) -> None:
         self._send(KIND_STATE, self._state_payload("online"))
@@ -254,31 +298,52 @@ class McuCpp01:
     def _apply_interlocks(
         self, act: str, max_on_s: float | None, requested: int, now: datetime
     ) -> tuple[int, bool]:
-        if act == FAN_INTERLOCK_ACTUATOR:
-            temp = self.readings.get(FAN_INTERLOCK_CHANNEL)
-            hot = (
-                temp is not None
-                and FAN_INTERLOCK_CHANNEL not in self._faulty
-                and temp >= FAN_INTERLOCK_TEMP_C
-            )
-            if hot:
-                spec = self.profile.actuator(act)
-                return (int(spec.max) if spec is not None else requested), True
-        if max_on_s is not None:
-            if act in self._locked_out:
-                if requested == 0:
-                    self._locked_out.discard(act)
-                    return 0, False
+        if act == FAN_INTERLOCK_ACTUATOR and self._fan_interlock(now):
+            spec = self.profile.actuator(act)
+            return (int(spec.max) if spec is not None else requested), True
+        if max_on_s is None:
+            return requested, False
+        stopped_at = self._locked_out.get(act)
+        if stopped_at is not None:
+            # 停止後は「要求がいったん0に戻る」かつ
+            # 「停止から PUMP_RESTART_DELAY_S 経つ」まで再開しない
+            if requested == 0:
+                self._zeroed.add(act)
+            waited = (now - stopped_at).total_seconds() >= PUMP_RESTART_DELAY_S
+            if not (act in self._zeroed and waited):
                 return 0, True
-            if requested > 0:
-                since = self._on_since.setdefault(act, now)
-                if (now - since).total_seconds() >= max_on_s:
-                    self._locked_out.add(act)
-                    del self._on_since[act]
-                    return 0, True
-            else:
-                self._on_since.pop(act, None)
+            del self._locked_out[act]
+            self._zeroed.discard(act)
+        if requested > 0:
+            since = self._on_since.setdefault(act, now)
+            if (now - since).total_seconds() >= max_on_s:
+                self._locked_out[act] = now
+                del self._on_since[act]
+                return 0, True
+        else:
+            self._on_since.pop(act, None)
         return requested, False
+
+    def _fan_interlock(self, now: datetime) -> bool:
+        """気温が FAN_INTERLOCK_TEMP_C 以上で効き、FAN_INTERLOCK_RELEASE_TEMP_C 未満が
+        FAN_INTERLOCK_RELEASE_HOLD_S 続いたら解除する（#27）。気温が故障中は状態を変えない。"""
+        temp = self.readings.get(FAN_INTERLOCK_CHANNEL)
+        if temp is None or FAN_INTERLOCK_CHANNEL in self._faulty:
+            return self._fan_hot
+        if temp >= FAN_INTERLOCK_TEMP_C:
+            self._fan_hot = True
+            self._fan_cool_since = None
+        elif self._fan_hot:
+            if temp < FAN_INTERLOCK_RELEASE_TEMP_C:
+                if self._fan_cool_since is None:
+                    self._fan_cool_since = now
+                held = (now - self._fan_cool_since).total_seconds()
+                if held >= FAN_INTERLOCK_RELEASE_HOLD_S:
+                    self._fan_hot = False
+                    self._fan_cool_since = None
+            else:
+                self._fan_cool_since = None
+        return self._fan_hot
 
     # ------------------------------------------------------------ 指令
 

@@ -1,0 +1,21 @@
+# 要求の流れ：app-01 → gw-01 簡易版。手動要求の accepted → done、拒否、無応答（3回再送して止まる）、スケジュール実行
+name: request_flow
+description: app-01 が request を送り、gw-01 簡易版がシナリオで決めた結果を request/ack で返す
+start: "2026-11-20T21:59:50.000Z"
+speed: 10
+duration_s: 120
+seed: 11
+devices:
+  - device_id: gw-01
+    type: gw_01_lite
+    request_rules:
+      - {op: set_actuator, actuator: buzzer, result: rejected, reason: not_permitted}
+      - {op: set_mode, result: no_response}
+      - {op: set_actuator, actuator: pump, result: done, done_after_s: 3}
+  - device_id: app-01
+    type: app_01
+    requests:
+      - {at_s: 2, kind: manual, target: mcu-cpp-01, op: set_actuator, args: {id: pump, level: 1000}, lease_s: 20}
+      - {at_s: 4, kind: manual, target: mcu-cpp-01, op: set_actuator, args: {id: buzzer, level: 500}}
+      - {at_s: 6, kind: manual, target: mcu-cpp-01, op: set_mode, args: {mode: manual}}
+      - {at_s: 10, kind: schedule, schedule_id: 12, target: mcu-cpp-01, op: set_actuator, args: {id: led_grow, level: 800}, lease_s: 600}

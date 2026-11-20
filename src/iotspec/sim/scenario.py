@@ -43,6 +43,13 @@ def _find_scenario_dir() -> Path:
 SCENARIO_DIR: Path = _find_scenario_dir()
 """同梱のシナリオ（iotspec/_scenarios）か、リポジトリの sim/scenarios/。"""
 
+_OPTION_KEYS = frozenset({"thresholds", "uart_path", "uart_commands", "request_rules", "requests"})
+_TYPE_OPTIONS = {
+    "mcu_cpp_01": frozenset(),
+    "mcu_c_01": frozenset({"thresholds", "uart_path"}),
+    "gw_01_lite": frozenset({"uart_path", "uart_commands", "request_rules"}),
+    "app_01": frozenset({"requests"}),
+}
 _DEFAULT_SPEED = 1.0
 _DEFAULT_SEED = 0
 
@@ -80,6 +87,8 @@ class DeviceConfig:
     signals: dict[str, dict[str, Any]] = field(default_factory=dict)
     local_rules: dict[str, int] = field(default_factory=dict)
     initial_mode: str | None = None
+    options: dict[str, Any] = field(default_factory=dict)
+    """型ごとの設定（thresholds、uart_path、uart_commands、request_rules、requests）。"""
 
 
 @dataclass(frozen=True)
@@ -129,6 +138,8 @@ def parse_scenario(data: Any, source: str = "<scenario>") -> Scenario:
                 problems.append(
                     f"/devices/{i}/local_rules/{act}: プロファイルにないアクチュエーター"
                 )
+        for key in sorted(_OPTION_KEYS & set(raw) - _TYPE_OPTIONS[raw["type"]]):
+            problems.append(f"/devices/{i}/{key}: {raw['type']} では使えない")
         mode = raw.get("initial_mode")
         if mode is not None and mode not in profile.modes:
             problems.append(f"/devices/{i}/initial_mode: プロファイルの modes にない {mode!r}")
@@ -140,6 +151,7 @@ def parse_scenario(data: Any, source: str = "<scenario>") -> Scenario:
                 signals=dict(raw.get("signals", {})),
                 local_rules=dict(raw.get("local_rules", {})),
                 initial_mode=mode,
+                options={k: v for k, v in raw.items() if k in _OPTION_KEYS},
             )
         )
     by_id = {d.device_id: d for d in devices}

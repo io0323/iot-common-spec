@@ -65,7 +65,10 @@
         },
         "type": {
           "enum": [
-            "mcu_cpp_01"
+            "mcu_cpp_01",
+            "mcu_c_01",
+            "gw_01_lite",
+            "app_01"
           ]
         },
         "initial_mode": {
@@ -88,6 +91,48 @@
           },
           "additionalProperties": {
             "$ref": "#/$defs/signal"
+          }
+        },
+        "thresholds": {
+          "description": "mcu_c_01：状態の判定に使うしきい値（0.01℃単位）。省略時は既定値（open-questions #32）",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "warn_c100": {
+              "type": "integer"
+            },
+            "crit_c100": {
+              "type": "integer"
+            },
+            "hyst_c100": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "uart_path": {
+          "description": "mcu_c_01・gw_01_lite：指定すると、そのデバイスパスを開く（device モード）。mcu_c_01 で省略すると自分で pty を作り、相手が開くパスを表示する",
+          "type": "string"
+        },
+        "uart_commands": {
+          "description": "gw_01_lite：作品01へ送る指令（UART の上位役）",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/uart_command"
+          }
+        },
+        "request_rules": {
+          "description": "gw_01_lite：request に返す結果。上から順に照合し、最初に一致したものを使う。どれにも一致しなければ accepted → done",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/request_rule"
+          }
+        },
+        "requests": {
+          "description": "app_01：送る request",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/request"
           }
         }
       }
@@ -241,7 +286,9 @@
             "silence",
             "seq_gap",
             "duplicate",
-            "clock_skew"
+            "clock_skew",
+            "corrupt_frame",
+            "heartbeat_silence"
           ]
         },
         "device": {
@@ -336,9 +383,181 @@
               "duration_s"
             ]
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "corrupt_frame"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "count"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "heartbeat_silence"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "duration_s"
+            ]
+          }
         }
       ],
-      "description": "注入する異常。sensor_fault：channel を duration_s の間 quality fault にし、始まりと終わりに SENSOR_FAULT／SENSOR_RECOVERED を送る。silence：duration_s の間、電文が届かない（seq は進むので受信側から欠損に見える）。seq_gap：at_s 以後の最初の kind（既定 telemetry）の電文の前に seq を count 個飛ばす。duplicate：at_s 以後の最初の kind の電文を、同じ内容（msg_id・seq も同じ）でさらに count 回送る。clock_skew：duration_s の間、ts を offset_s 秒ずらす（ts_source は device のまま）"
+      "description": "注入する異常。sensor_fault：channel を duration_s の間 quality fault にし、始まりと終わりに SENSOR_FAULT／SENSOR_RECOVERED を送る。silence：duration_s の間、電文が届かない（seq は進むので受信側から欠損に見える）。seq_gap：at_s 以後の最初の kind（既定 telemetry）の電文の前に seq を count 個飛ばす。duplicate：at_s 以後の最初の kind の電文を、同じ内容（msg_id・seq も同じ）でさらに count 回送る。clock_skew：duration_s の間、ts を offset_s 秒ずらす（ts_source は device のまま）。corrupt_frame：at_s 以後に mcu_c_01 が送る UART フレームのうち count 件の CRC を壊す。heartbeat_silence：gw_01_lite が duration_s の間、作品01への HEARTBEAT を止める"
+    },
+    "uart_command": {
+      "type": "object",
+      "required": [
+        "at_s",
+        "op"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "at_s": {
+          "type": "number",
+          "minimum": 0
+        },
+        "op": {
+          "$ref": "common.schema.json#/$defs/op"
+        },
+        "args": {
+          "type": "object"
+        },
+        "lease_s": {
+          "$ref": "common.schema.json#/$defs/lease_s"
+        },
+        "priority": {
+          "enum": [
+            "safety",
+            "manual",
+            "auto",
+            "schedule"
+          ]
+        },
+        "repeat": {
+          "description": "同じ cmd_ref の CMD をさらにこの回数すぐに送る（重複 cmd_ref の確認用）",
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "request_rule": {
+      "type": "object",
+      "required": [
+        "result"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "$ref": "common.schema.json#/$defs/op"
+        },
+        "target": {
+          "$ref": "common.schema.json#/$defs/device_id"
+        },
+        "actuator": {
+          "$ref": "common.schema.json#/$defs/actuator_id"
+        },
+        "result": {
+          "enum": [
+            "done",
+            "failed",
+            "rejected",
+            "no_response"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "done_after_s": {
+          "description": "accepted から最終結果までの秒数（既定 1）",
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "result": {
+                "enum": [
+                  "rejected",
+                  "failed"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "reason"
+            ]
+          }
+        }
+      ]
+    },
+    "request": {
+      "type": "object",
+      "required": [
+        "at_s",
+        "kind",
+        "target",
+        "op"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "at_s": {
+          "type": "number",
+          "minimum": 0
+        },
+        "kind": {
+          "enum": [
+            "manual",
+            "schedule"
+          ]
+        },
+        "target": {
+          "$ref": "common.schema.json#/$defs/device_id"
+        },
+        "op": {
+          "$ref": "common.schema.json#/$defs/op"
+        },
+        "args": {
+          "type": "object"
+        },
+        "lease_s": {
+          "$ref": "common.schema.json#/$defs/lease_s"
+        },
+        "schedule_id": {
+          "description": "kind: schedule のとき必須。planned_at は送る時刻",
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "schedule"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "schedule_id"
+            ]
+          }
+        }
+      ]
     }
   }
 }
