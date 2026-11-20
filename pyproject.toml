@@ -10,6 +10,7 @@ dependencies = [
     "python-ulid>=3.0",
     "pyyaml>=6.0",
     "aiomqtt>=2.3",
+    "pyserial>=3.5",
 ]
 
 [project.scripts]
@@ -24,6 +25,7 @@ dev = [
     "mypy>=1.13",
     "types-PyYAML>=6.0",
     "types-jsonschema>=4.26.0.20261006",
+    "types-pyserial>=3.5.0.20261104",
 ]
 
 [build-system]

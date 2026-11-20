@@ -9,7 +9,7 @@ devices:
   - device_id: mcu-cpp-01
     type: mcu_cpp_01
     signals:
-      temp_air: {kind: diurnal, mean: 42.0, amplitude: 6.0, peak_hour: 14, noise: 0.2}
+      temp_air: {kind: diurnal, mean: 40.0, amplitude: 6.0, peak_hour: 14, noise: 0.2}
       humidity: {kind: constant, value: 40.0, noise: 1.0}
       pressure: {kind: constant, value: 1008.0, noise: 0.3}
       lux: {kind: daylight, max: 30000, sunrise_hour: 6, sunset_hour: 18, noise: 150}
