@@ -6,8 +6,8 @@
   "frame": {
     "type": "HEARTBEAT",
     "type_code": 3,
-    "seq": 8,
+    "seq": 0,
     "uptime_ms": 123456
   },
-  "hex": "03 03 08 05 04 40 e2 01 03 1c 70 00"
+  "hex": "02 03 01 05 04 40 e2 01 03 b1 e3 00"
 }

@@ -6,10 +6,10 @@
   "frame": {
     "type": "HEARTBEAT",
     "type_code": 3,
-    "seq": 2,
+    "seq": 1,
     "uptime_ms": 4294967295
   },
-  "hex": "03 03 02 08 04 ff ff ff ff 61 89 00",
+  "hex": "03 03 01 08 04 ff ff ff ff e3 51 00",
   "received_at": "2026-11-20T06:00:10.500Z",
   "expected": {
     "envelope": null,

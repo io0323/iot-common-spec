@@ -6,7 +6,7 @@
   "frame": {
     "type": "EVENT",
     "type_code": 2,
-    "seq": 3,
+    "seq": 0,
     "uptime_ms": 1500,
     "code": 3,
     "severity": 2,
@@ -14,14 +14,14 @@
     "to_state": 3,
     "temp_c100": 4500
   },
-  "hex": "03 02 03 04 0a dc 05 01 09 03 02 01 03 94 11 82 73 00",
+  "hex": "02 02 01 04 0a dc 05 01 09 03 02 01 03 94 11 27 bc 00",
   "received_at": "2026-11-20T06:00:06.500Z",
   "expected": {
     "envelope": {
       "schema": "iot.v1.event",
       "msg_id": "01M7VRMV340000000000000003",
       "device_id": "mcu-c-01",
-      "seq": 3,
+      "seq": 0,
       "boot_id": "7f3a9c01",
       "ts": "2026-11-20T06:00:06.500Z",
       "ts_source": "gateway",

@@ -6,21 +6,21 @@
   "frame": {
     "type": "TELEMETRY",
     "type_code": 1,
-    "seq": 3,
+    "seq": 2,
     "uptime_ms": 2050,
     "temp_c100": 2420,
     "quality": 0,
     "state": 1,
     "fan_pm": 250
   },
-  "hex": "03 01 03 04 0a 02 08 01 03 74 09 03 01 fa 03 9d c8 00",
+  "hex": "03 01 02 04 0a 02 08 01 03 74 09 03 01 fa 03 fe 8d 00",
   "received_at": "2026-11-20T06:00:13.000Z",
   "expected": {
     "envelope": {
       "schema": "iot.v1.telemetry",
       "msg_id": "01M7VRN1E8000000000000000B",
       "device_id": "mcu-c-01",
-      "seq": 3,
+      "seq": 2,
       "boot_id": "00000001",
       "ts": "2026-11-20T06:00:13.000Z",
       "ts_source": "gateway",
