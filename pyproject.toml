@@ -33,6 +33,7 @@ packages = ["src/iotspec"]
 [tool.hatch.build.targets.wheel.force-include]
 # 他作品が iotspec を取り込んだときも Schema を読めるよう、パッケージに同梱する
 "schemas" = "iotspec/_schemas"
+"profiles" = "iotspec/_profiles"
 
 [tool.ruff]
 line-length = 100

@@ -1,0 +1,22 @@
+{
+  "name": "cmd_set_threshold",
+  "order": 6,
+  "direction": "03->01",
+  "description": "SET_THRESHOLD warn 35.00℃ crit 45.00℃ hyst 2.00℃（汎用指令との対応は未定。符号化のみ）",
+  "frame": {
+    "type": "CMD",
+    "type_code": 16,
+    "seq": 5,
+    "cmd_ref": 3,
+    "op": 3,
+    "ttl_s": 0,
+    "args": [
+      3500,
+      4500,
+      200
+    ],
+    "raw_args": "",
+    "op_name": "SET_THRESHOLD"
+  },
+  "hex": "03 10 05 03 0b 03 02 03 01 06 ac 0d 94 11 c8 03 75 e1 00"
+}

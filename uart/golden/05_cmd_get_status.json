@@ -1,0 +1,24 @@
+{
+  "name": "cmd_get_status",
+  "order": 5,
+  "direction": "03->01",
+  "description": "get_status → GET_STATUS（引数なし、ttl_s 0）",
+  "frame": {
+    "type": "CMD",
+    "type_code": 16,
+    "seq": 4,
+    "cmd_ref": 2,
+    "op": 16,
+    "ttl_s": 0,
+    "args": [],
+    "raw_args": "",
+    "op_name": "GET_STATUS"
+  },
+  "hex": "03 10 04 03 05 02 02 10 01 01 01 01 00",
+  "input_cmd_payload": {
+    "cmd_id": "01JD3R0E5K7M2N4P6R8T0V2X4Y",
+    "op": "get_status",
+    "priority": "auto"
+  },
+  "cmd_ref": 2
+}

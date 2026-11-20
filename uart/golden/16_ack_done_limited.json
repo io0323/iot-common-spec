@@ -1,0 +1,41 @@
+{
+  "name": "ack_done_limited",
+  "order": 16,
+  "direction": "01->03",
+  "description": "ACK done、limited あり、applied 1000 → cmd/ack の applied {level: 1000}",
+  "frame": {
+    "type": "ACK",
+    "type_code": 17,
+    "seq": 6,
+    "cmd_ref": 4660,
+    "status": 1,
+    "reason": 0,
+    "limited": 1,
+    "applied": 1000
+  },
+  "hex": "03 11 06 05 07 34 12 01 06 01 e8 03 4a d0 00",
+  "received_at": "2026-11-20T06:00:08.000Z",
+  "expected": {
+    "envelope": {
+      "schema": "iot.v1.cmd_ack",
+      "msg_id": "01M7VRMWJ00000000000000005",
+      "device_id": "mcu-c-01",
+      "seq": 6,
+      "boot_id": "7f3a9c01",
+      "ts": "2026-11-20T06:00:08.000Z",
+      "ts_source": "gateway",
+      "payload": {
+        "cmd_id": "01JD3R0A5K7M2N4P6R8T0V2X4Y",
+        "status": "done",
+        "limited": true,
+        "reason": null,
+        "applied": {
+          "level": 1000
+        }
+      }
+    },
+    "discarded": null,
+    "request_state": false,
+    "dropped_telemetry_total": 1
+  }
+}

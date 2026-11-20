@@ -1,0 +1,22 @@
+{
+  "name": "cmd_set_threshold_negative",
+  "order": 7,
+  "direction": "03->01",
+  "description": "SET_THRESHOLD の i16 の負の値と最小値（符号化のみ）",
+  "frame": {
+    "type": "CMD",
+    "type_code": 16,
+    "seq": 6,
+    "cmd_ref": 4,
+    "op": 3,
+    "ttl_s": 0,
+    "args": [
+      -32768,
+      -1000,
+      0
+    ],
+    "raw_args": "",
+    "op_name": "SET_THRESHOLD"
+  },
+  "hex": "03 10 06 03 0b 04 02 03 01 01 04 80 18 fc 01 03 9d 43 00"
+}

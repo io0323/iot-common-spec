@@ -1,0 +1,27 @@
+{
+  "name": "cmd_clear_override",
+  "order": 4,
+  "direction": "03->01",
+  "description": "release fan_main → CLEAR_OVERRIDE（引数なし、ttl_s 0）",
+  "frame": {
+    "type": "CMD",
+    "type_code": 16,
+    "seq": 3,
+    "cmd_ref": 1,
+    "op": 2,
+    "ttl_s": 0,
+    "args": [],
+    "raw_args": "",
+    "op_name": "CLEAR_OVERRIDE"
+  },
+  "hex": "03 10 03 03 05 01 02 02 01 03 c9 04 00",
+  "input_cmd_payload": {
+    "cmd_id": "01JD3R0D5K7M2N4P6R8T0V2X4Y",
+    "op": "release",
+    "args": {
+      "id": "fan_main"
+    },
+    "priority": "auto"
+  },
+  "cmd_ref": 1
+}

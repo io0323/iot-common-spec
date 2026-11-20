@@ -1,0 +1,34 @@
+# 作品01（C × STM32）のデバイスプロファイル（共通仕様 v0.2.1 #16）
+# STATE フレームにない state の項目を補い、UART の状態番号と汎用指令の対応を定める。
+device_id: mcu-c-01
+transport: uart
+
+channels:
+  - channel: temp_board
+    unit: degC
+    period_ms: 1000   # STATE フレームの period_ms があればそちらを優先する
+
+actuators:
+  - id: fan_main
+    min: 0
+    max: 1000
+
+states:
+  0: INIT
+  1: NORMAL
+  2: WARNING
+  3: CRITICAL
+  4: SENSOR_FAULT
+
+commands:
+  - op: set_actuator
+    target: fan_main
+    uart_op: SET_FAN_OVERRIDE
+    args:
+      duty_pm: level
+    ttl_s: lease_s
+  - op: release
+    target: fan_main
+    uart_op: CLEAR_OVERRIDE
+  - op: get_status
+    uart_op: GET_STATUS

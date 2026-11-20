@@ -1,0 +1,24 @@
+{
+  "name": "telemetry_crc_mismatch",
+  "order": 22,
+  "direction": "01->03",
+  "description": "壊れたフレーム：CRC 不一致 → 破棄",
+  "frame": {
+    "type": "TELEMETRY",
+    "type_code": 1,
+    "seq": 3,
+    "uptime_ms": 4294967295,
+    "temp_c100": 2600,
+    "quality": 0,
+    "state": 1,
+    "fan_pm": 0
+  },
+  "hex": "03 01 03 08 0a ff ff ff ff 28 0a 02 01 01 03 bf 86 00",
+  "received_at": "2026-11-20T06:00:11.000Z",
+  "expected": {
+    "envelope": null,
+    "discarded": "crc_mismatch",
+    "request_state": false,
+    "dropped_telemetry_total": 1
+  }
+}

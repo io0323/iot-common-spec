@@ -1,0 +1,31 @@
+{
+  "name": "cmd_set_fan_override",
+  "order": 1,
+  "direction": "03->01",
+  "description": "set_actuator fan_main level 800 lease_s 60 → SET_FAN_OVERRIDE duty_pm 800 ttl_s 60",
+  "frame": {
+    "type": "CMD",
+    "type_code": 16,
+    "seq": 0,
+    "cmd_ref": 4660,
+    "op": 1,
+    "ttl_s": 60,
+    "args": [
+      800
+    ],
+    "raw_args": "",
+    "op_name": "SET_FAN_OVERRIDE"
+  },
+  "hex": "02 10 01 06 07 34 12 01 3c 05 20 03 aa b0 00",
+  "input_cmd_payload": {
+    "cmd_id": "01JD3R0A5K7M2N4P6R8T0V2X4Y",
+    "op": "set_actuator",
+    "args": {
+      "id": "fan_main",
+      "level": 800
+    },
+    "priority": "auto",
+    "lease_s": 60
+  },
+  "cmd_ref": 4660
+}

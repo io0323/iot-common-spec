@@ -1,0 +1,50 @@
+{
+  "name": "telemetry_normal",
+  "order": 12,
+  "direction": "01->03",
+  "description": "TELEMETRY：25.12℃、good、NORMAL、fan 0",
+  "frame": {
+    "type": "TELEMETRY",
+    "type_code": 1,
+    "seq": 2,
+    "uptime_ms": 1000,
+    "temp_c100": 2512,
+    "quality": 0,
+    "state": 1,
+    "fan_pm": 0
+  },
+  "hex": "03 01 02 04 0a e8 03 01 03 d0 09 02 01 01 03 24 a9 00",
+  "received_at": "2026-11-20T06:00:06.000Z",
+  "expected": {
+    "envelope": {
+      "schema": "iot.v1.telemetry",
+      "msg_id": "01M7VRMTKG0000000000000002",
+      "device_id": "mcu-c-01",
+      "seq": 2,
+      "boot_id": "7f3a9c01",
+      "ts": "2026-11-20T06:00:06.000Z",
+      "ts_source": "gateway",
+      "uptime_ms": 1000,
+      "payload": {
+        "readings": [
+          {
+            "channel": "temp_board",
+            "value": 25.12,
+            "unit": "degC",
+            "quality": "good"
+          }
+        ],
+        "device_state": "NORMAL",
+        "actuators": [
+          {
+            "id": "fan_main",
+            "level": 0
+          }
+        ]
+      }
+    },
+    "discarded": null,
+    "request_state": false,
+    "dropped_telemetry_total": 1
+  }
+}
