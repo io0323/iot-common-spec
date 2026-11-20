@@ -191,3 +191,16 @@ UART_STATE_PERIOD_S: Final = 60
 """作品01は起動後の最初のフレームとして STATE を送り、以後60秒ごとにも送る。"""
 UART_INITIAL_DEVICE_STATE: Final = "INIT"
 """TELEMETRY を受ける前の state の mode（v0.2.1、#16）。"""
+
+# --- MQTT の QoS と retain（第2章のトピック表） ---
+QOS_BY_KIND: Final[dict[str, int]] = {
+    KIND_TELEMETRY: 0,
+    KIND_EVENT: 1,
+    KIND_STATE: 1,
+    KIND_CMD: 1,
+    KIND_CMD_ACK: 1,
+    KIND_REQUEST: 1,
+    KIND_REQUEST_ACK: 1,
+}
+RETAIN_KINDS: Final[frozenset[str]] = frozenset({KIND_STATE})
+"""retain で発行する kind（state だけ。LWT で offline）。"""

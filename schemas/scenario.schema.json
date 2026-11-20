@@ -1,0 +1,344 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/io0323/iot-common-spec/schemas/scenario.schema.json",
+  "title": "シミュレータのシナリオ（sim/scenarios/*.yaml）",
+  "type": "object",
+  "required": [
+    "name",
+    "start",
+    "duration_s",
+    "devices"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "description": {
+      "type": "string"
+    },
+    "start": {
+      "$ref": "common.schema.json#/$defs/ts"
+    },
+    "speed": {
+      "description": "倍速。省略時は1。0 は待たずに一括生成",
+      "type": "number",
+      "minimum": 0
+    },
+    "duration_s": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "seed": {
+      "type": "integer"
+    },
+    "site": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "devices": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/device"
+      }
+    },
+    "faults": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/fault"
+      }
+    }
+  },
+  "$defs": {
+    "device": {
+      "type": "object",
+      "required": [
+        "device_id",
+        "type"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "device_id": {
+          "$ref": "common.schema.json#/$defs/device_id"
+        },
+        "type": {
+          "enum": [
+            "mcu_cpp_01"
+          ]
+        },
+        "initial_mode": {
+          "type": "string"
+        },
+        "local_rules": {
+          "description": "デバイス自身のルールが出す出力（アクチュエーター → level）。ない出力は既定値 0（owner none）",
+          "type": "object",
+          "propertyNames": {
+            "$ref": "common.schema.json#/$defs/actuator_id"
+          },
+          "additionalProperties": {
+            "$ref": "common.schema.json#/$defs/level"
+          }
+        },
+        "signals": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "common.schema.json#/$defs/channel"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/signal"
+          }
+        }
+      }
+    },
+    "signal": {
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "constant",
+            "diurnal",
+            "daylight",
+            "soil"
+          ]
+        },
+        "noise": {
+          "description": "正規分布のノイズの標準偏差",
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "constant"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "value"
+            ],
+            "properties": {
+              "value": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "diurnal"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "mean",
+              "amplitude",
+              "peak_hour"
+            ],
+            "properties": {
+              "mean": {
+                "type": "number"
+              },
+              "amplitude": {
+                "type": "number"
+              },
+              "peak_hour": {
+                "type": "number",
+                "minimum": 0,
+                "exclusiveMaximum": 24
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "daylight"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "max",
+              "sunrise_hour",
+              "sunset_hour"
+            ],
+            "properties": {
+              "max": {
+                "type": "number",
+                "minimum": 0
+              },
+              "sunrise_hour": {
+                "type": "number",
+                "minimum": 0,
+                "exclusiveMaximum": 24
+              },
+              "sunset_hour": {
+                "type": "number",
+                "minimum": 0,
+                "exclusiveMaximum": 24
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "soil"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "start",
+              "decay_per_hour",
+              "refill_per_pump_s"
+            ],
+            "properties": {
+              "start": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "decay_per_hour": {
+                "type": "number",
+                "minimum": 0
+              },
+              "refill_per_pump_s": {
+                "type": "number",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "fault": {
+      "type": "object",
+      "required": [
+        "type",
+        "device",
+        "at_s"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "enum": [
+            "sensor_fault",
+            "silence",
+            "seq_gap",
+            "duplicate",
+            "clock_skew"
+          ]
+        },
+        "device": {
+          "$ref": "common.schema.json#/$defs/device_id"
+        },
+        "at_s": {
+          "description": "開始時刻からの秒数",
+          "type": "number",
+          "minimum": 0
+        },
+        "duration_s": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "channel": {
+          "$ref": "common.schema.json#/$defs/channel"
+        },
+        "kind": {
+          "enum": [
+            "telemetry",
+            "event",
+            "state",
+            "cmd/ack"
+          ]
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "offset_s": {
+          "type": "number"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "sensor_fault"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "channel",
+              "duration_s"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "silence"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "duration_s"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "seq_gap",
+                  "duplicate"
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "count"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "clock_skew"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "offset_s",
+              "duration_s"
+            ]
+          }
+        }
+      ],
+      "description": "注入する異常。sensor_fault：channel を duration_s の間 quality fault にし、始まりと終わりに SENSOR_FAULT／SENSOR_RECOVERED を送る。silence：duration_s の間、電文が届かない（seq は進むので受信側から欠損に見える）。seq_gap：at_s 以後の最初の kind（既定 telemetry）の電文の前に seq を count 個飛ばす。duplicate：at_s 以後の最初の kind の電文を、同じ内容（msg_id・seq も同じ）でさらに count 回送る。clock_skew：duration_s の間、ts を offset_s 秒ずらす（ts_source は device のまま）"
+    }
+  }
+}

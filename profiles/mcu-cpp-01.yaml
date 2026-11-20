@@ -1,0 +1,19 @@
+# 作品02（C++ × ESP32）のデバイスプロファイル（共通仕様 v0.2.1 #16・#5）
+# MQTT に直接つながるので、states と commands（UART の対応）は持たない。
+device_id: mcu-cpp-01
+transport: mqtt
+
+channels:   # 計測周期は作品02の設計書に記載がないため 1000ms とする（open-questions #26）
+  - {channel: temp_air, unit: degC, period_ms: 1000}
+  - {channel: humidity, unit: pct_rh, period_ms: 1000}
+  - {channel: pressure, unit: hPa, period_ms: 1000}
+  - {channel: lux, unit: lux, period_ms: 1000}
+  - {channel: soil, unit: pct, period_ms: 1000}
+
+actuators:
+  - {id: fan_main, min: 0, max: 1000}
+  - {id: led_grow, min: 0, max: 1000}
+  - {id: pump, min: 0, max: 1000, max_on_s: 30}   # 安全インターロック：連続30秒で強制停止
+  - {id: buzzer, min: 0, max: 1000}
+
+modes: [auto, manual, power_save]

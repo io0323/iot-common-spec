@@ -90,6 +90,14 @@ class Profile:
     actuators: tuple[ActuatorSpec, ...]
     states: Mapping[int, str]
     commands: tuple[CommandSpec, ...]
+    modes: tuple[str, ...] = ()
+    """set_mode で取りうる値（v0.2.1 #5）。"""
+
+    def actuator(self, actuator_id: str) -> ActuatorSpec | None:
+        for spec in self.actuators:
+            if spec.id == actuator_id:
+                return spec
+        return None
 
     def state_name(self, number: int) -> str:
         """状態番号 → 状態名。表にない番号は KeyError。"""
@@ -161,6 +169,7 @@ def parse_profile(data: Any, source: str = "<profile>") -> Profile:
         actuators=tuple(ActuatorSpec(**a) for a in data["actuators"]),
         states={int(k): v for k, v in data.get("states", {}).items()},
         commands=tuple(commands),
+        modes=tuple(data.get("modes", [])),
     )
 
 

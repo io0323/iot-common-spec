@@ -1,0 +1,19 @@
+# センサー故障と時刻ずれ：soil が10分間故障し、途中で時刻が10分ずれる
+name: sensor_fault
+description: soil の故障（quality fault と SENSOR_FAULT／SENSOR_RECOVERED）、時刻ずれ、高温でのファンのインターロック
+start: "2026-11-20T12:00:00.000Z"
+speed: 60
+duration_s: 3600
+seed: 7
+devices:
+  - device_id: mcu-cpp-01
+    type: mcu_cpp_01
+    signals:
+      temp_air: {kind: diurnal, mean: 42.0, amplitude: 6.0, peak_hour: 14, noise: 0.2}
+      humidity: {kind: constant, value: 40.0, noise: 1.0}
+      pressure: {kind: constant, value: 1008.0, noise: 0.3}
+      lux: {kind: daylight, max: 30000, sunrise_hour: 6, sunset_hour: 18, noise: 150}
+      soil: {kind: soil, start: 30.0, decay_per_hour: 1.0, refill_per_pump_s: 0.2, noise: 0.1}
+faults:
+  - {type: sensor_fault, device: mcu-cpp-01, channel: soil, at_s: 300, duration_s: 600}
+  - {type: clock_skew, device: mcu-cpp-01, at_s: 1200, duration_s: 120, offset_s: 600}
