@@ -105,11 +105,14 @@ def client_for(
 
 
 def _abort(client: aiomqtt.Client) -> None:
-    """DISCONNECT を送らずにソケットを閉じる。"""
-    sock = client._client.socket()  # aiomqtt には接続を切るだけの公開の手段がない
-    if sock is not None:
-        with contextlib.suppress(OSError):
-            sock.close()
+    """DISCONNECT を送らずに接続を切る（ブローカーは LWT を発行する）。
+
+    ソケットだけを閉じると、イベントループに登録された読み書きの監視が残り、同じ番号の
+    ファイル記述子を次の接続が使ったときに混線する。paho の _sock_close は監視を外してから閉じる。
+    aiomqtt と paho には、DISCONNECT なしで切る公開の手段がない。
+    """
+    with contextlib.suppress(OSError):
+        client._client._sock_close()
 
 
 async def _publish(client: aiomqtt.Client, items: list[Outgoing]) -> None:
