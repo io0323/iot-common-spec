@@ -1,0 +1,337 @@
+"""UART ゴールデンフレームを生成する（第7章「値の対応表」の後段、uart/golden/）。
+
+使い方:
+    uv run python tools/gen_golden.py           # uart/golden/ に書き出す
+    uv run python tools/gen_golden.py --check   # 書き出さずに差分を調べる（差分ありで1）
+
+ゴールデンは1本のセッション（order の順）として作る。受信側（01 → 03）のフレームは、
+直前までのフレームを順に UartBridge に通した状態で変換した結果を expected に持つ。
+時刻は固定の VirtualClock（1フレームごとに 500ms 進める）、msg_id は固定の規則で作るので、
+再生成しても差分は出ない。
+
+各ゴールデンは2つのファイルからなる。
+    {order:02d}_{name}.hex   符号化済みフレーム（末尾の 0x00 を含む）のスペース区切り16進
+    {order:02d}_{name}.json  フレームのフィールド値と、変換後の期待エンベロープ
+                             （03 → 01 は入力の cmd と期待する CMD）
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any
+
+from ulid import ULID
+
+from iotspec.clock import VirtualClock, format_ts
+from iotspec.constants import UART_OP_NAMES
+from iotspec.profile import load_profile
+from iotspec.uart.bridge import CommandRejected, UartBridge
+from iotspec.uart.frames import (
+    Ack,
+    Cmd,
+    Event,
+    Frame,
+    Heartbeat,
+    State,
+    Telemetry,
+    encode_frame,
+)
+
+ROOT = Path(__file__).resolve().parents[1]
+GOLDEN_DIR = ROOT / "uart" / "golden"
+PROFILE_ID = "mcu-c-01"
+START = datetime(2026, 11, 20, 6, 0, 0, tzinfo=UTC)
+STEP = timedelta(milliseconds=500)
+
+
+@dataclass
+class Golden:
+    name: str
+    description: str
+    direction: str
+    frame: Frame
+    data: bytes
+    extra: dict[str, Any] = field(default_factory=dict)
+
+
+def _frame_fields(frame: Frame) -> dict[str, Any]:
+    fields: dict[str, Any] = {"type": type(frame).__name__.upper(), "type_code": frame.TYPE}
+    values = asdict(frame)
+    if isinstance(frame, Cmd):
+        values["op_name"] = UART_OP_NAMES.get(frame.op)
+        values["args"] = list(frame.args)
+        values["raw_args"] = frame.raw_args.hex(" ")
+    fields.update(values)
+    return fields
+
+
+def _hex(data: bytes) -> str:
+    return data.hex(" ")
+
+
+class _Session:
+    def __init__(self) -> None:
+        self.clock = VirtualClock(START)
+        self._counter = 0
+        self.bridge = UartBridge(load_profile(PROFILE_ID), self.clock, new_id=self._new_id)
+        self.goldens: list[Golden] = []
+
+    def _new_id(self) -> str:
+        """固定の msg_id：時刻部＝現在の仮想時刻、乱数部＝通し番号。"""
+        self._counter += 1
+        millis = (self.clock.now() - datetime(1970, 1, 1, tzinfo=UTC)) // timedelta(milliseconds=1)
+        return str(ULID.from_bytes(millis.to_bytes(6, "big") + self._counter.to_bytes(10, "big")))
+
+    def rx(self, name: str, description: str, frame: Frame, *, corrupt: bool = False) -> None:
+        """01 → 03 のフレームを受信させ、期待結果を記録する。"""
+        self.clock.advance(STEP)
+        data = encode_frame(frame)
+        if corrupt:
+            # CRC の下位バイトを反転させた壊れたフレーム（COBS の符号化はやり直す）
+            from iotspec.uart import cobs
+
+            raw = bytearray(cobs.decode(data[:-1]))
+            raw[-2] ^= 0xFF
+            data = cobs.encode(bytes(raw)) + b"\x00"
+        result = self.bridge.receive_bytes(data)
+        expected = {
+            "envelope": result.envelopes[0].to_dict() if result.envelopes else None,
+            "discarded": result.discarded,
+            "request_state": result.request_state,
+            "dropped_telemetry_total": self.bridge.dropped_telemetry,
+        }
+        extra = {"received_at": format_ts(self.clock.now()), "expected": expected}
+        self.goldens.append(Golden(name, description, "01->03", frame, data, extra))
+
+    def tx_cmd(self, name: str, description: str, cmd: dict[str, Any], cmd_ref: int) -> None:
+        """03 → 01：cmd の payload を CMD に変換する。"""
+        self.clock.advance(STEP)
+        frame = self.bridge.command_to_frame(cmd, cmd_ref)
+        if isinstance(frame, CommandRejected):
+            raise RuntimeError(f"{name}: 変換できない {frame}")
+        extra = {"input_cmd_payload": cmd, "cmd_ref": cmd_ref}
+        self.goldens.append(Golden(name, description, "03->01", frame, encode_frame(frame), extra))
+
+    def tx_raw(self, name: str, description: str, frame: Frame) -> None:
+        """03 → 01：汎用指令との対応がない CMD・HEARTBEAT（符号化だけを照合する）。"""
+        self.clock.advance(STEP)
+        self.goldens.append(Golden(name, description, "03->01", frame, encode_frame(frame)))
+
+
+def build_session() -> list[Golden]:
+    s = _Session()
+    b = s.bridge
+    cmd_fan = "01JD3R0A5K7M2N4P6R8T0V2X4Y"
+
+    # 03 → 01：指令（ACK の照合に使う cmd_ref を先に登録する）
+    s.tx_cmd(
+        "cmd_set_fan_override",
+        "set_actuator fan_main level 800 lease_s 60 → SET_FAN_OVERRIDE duty_pm 800 ttl_s 60",
+        {
+            "cmd_id": cmd_fan,
+            "op": "set_actuator",
+            "args": {"id": "fan_main", "level": 800},
+            "priority": "auto",
+            "lease_s": 60,
+        },
+        0x1234,
+    )
+    s.tx_cmd(
+        "cmd_set_fan_override_max",
+        "境界値：level 1000、lease_s 600、cmd_ref 0xFFFF",
+        {
+            "cmd_id": "01JD3R0B5K7M2N4P6R8T0V2X4Y",
+            "op": "set_actuator",
+            "args": {"id": "fan_main", "level": 1000},
+            "priority": "manual",
+            "lease_s": 600,
+        },
+        0xFFFF,
+    )
+    s.tx_cmd(
+        "cmd_set_fan_override_lease_omitted",
+        "境界値：level 0、lease_s 省略 → ttl_s 60（既定値）",
+        {
+            "cmd_id": "01JD3R0C5K7M2N4P6R8T0V2X4Y",
+            "op": "set_actuator",
+            "args": {"id": "fan_main", "level": 0},
+            "priority": "auto",
+        },
+        0x0000,
+    )
+    s.tx_cmd(
+        "cmd_clear_override",
+        "release fan_main → CLEAR_OVERRIDE（引数なし、ttl_s 0）",
+        {
+            "cmd_id": "01JD3R0D5K7M2N4P6R8T0V2X4Y",
+            "op": "release",
+            "args": {"id": "fan_main"},
+            "priority": "auto",
+        },
+        0x0001,
+    )
+    s.tx_cmd(
+        "cmd_get_status",
+        "get_status → GET_STATUS（引数なし、ttl_s 0）",
+        {"cmd_id": "01JD3R0E5K7M2N4P6R8T0V2X4Y", "op": "get_status", "priority": "auto"},
+        0x0002,
+    )
+    s.tx_raw(
+        "cmd_set_threshold",
+        "SET_THRESHOLD warn 35.00℃ crit 45.00℃ hyst 2.00℃（汎用指令との対応は未定。符号化のみ）",
+        Cmd(b.next_tx_seq(), 0x0003, 0x03, 0, (3500, 4500, 200)),
+    )
+    s.tx_raw(
+        "cmd_set_threshold_negative",
+        "SET_THRESHOLD の i16 の負の値と最小値（符号化のみ）",
+        Cmd(b.next_tx_seq(), 0x0004, 0x03, 0, (-32768, -1000, 0)),
+    )
+    s.tx_raw(
+        "cmd_get_diag",
+        "GET_DIAG（引数なし。汎用指令との対応はない。符号化のみ）",
+        Cmd(b.next_tx_seq(), 0x0005, 0x11, 0),
+    )
+    s.tx_raw("heartbeat_tx", "03 → 01 の HEARTBEAT", b.heartbeat_frame(123_456))
+
+    # 01 → 03：起動から
+    s.rx(
+        "telemetry_before_state",
+        "STATE より前の TELEMETRY：変換せず破棄し、STATE を求める",
+        Telemetry(0, 900, 2500, 0, 0, 0),
+    )
+    s.rx(
+        "state_boot",
+        "起動後の STATE：fw_version 0x0102 → '1.2'、boot_id → '7f3a9c01'、mode は INIT",
+        State(1, 0x0102, 0x7F3A9C01, 1000),
+    )
+    s.rx(
+        "telemetry_normal",
+        "TELEMETRY：25.12℃、good、NORMAL、fan 0",
+        Telemetry(2, 1000, 2512, 0, 1, 0),
+    )
+    s.rx(
+        "event_threshold_exceeded",
+        "EVENT：THRESHOLD_EXCEEDED critical、NORMAL → CRITICAL",
+        Event(3, 1500, 3, 2, 1, 3, 4500),
+    )
+    s.rx("heartbeat_rx", "01 → 03 の HEARTBEAT（電文にはしない）", Heartbeat(4, 2000))
+    s.rx(
+        "state_periodic",
+        "60秒ごとの STATE（同じ boot_id）：mode は直近の TELEMETRY の状態名、"
+        "period_ms は STATE の値",
+        State(5, 0x0102, 0x7F3A9C01, 500),
+    )
+    s.rx(
+        "ack_done_limited",
+        "ACK done、limited あり、applied 1000 → cmd/ack の applied {level: 1000}",
+        Ack(6, 0x1234, 1, 0, 1, 1000),
+    )
+    s.rx(
+        "ack_rejected_expired",
+        "ACK rejected expired（CLEAR_OVERRIDE なので applied を付けない）、limited なし",
+        Ack(7, 0x0001, 2, 4, 0, 0),
+    )
+    s.rx(
+        "telemetry_fault_min_temp",
+        "境界値：temp_c100 -32768（-327.68℃）、fault、SENSOR_FAULT、fan 1000、seq 65535",
+        Telemetry(65535, 3000, -32768, 2, 4, 1000),
+    )
+    s.rx(
+        "telemetry_seq_wrapped",
+        "seq の一周：UART の seq 0 → エンベロープの seq 65536。temp_c100 32767、stale",
+        Telemetry(0, 4000, 32767, 1, 2, 500),
+    )
+    s.rx(
+        "event_sensor_fault",
+        "EVENT：SENSOR_FAULT critical、WARNING → SENSOR_FAULT（一周後の seq 65537）",
+        Event(1, 4500, 5, 2, 2, 4, -32768),
+    )
+    s.rx(
+        "heartbeat_rx_max_uptime",
+        "境界値：uptime_ms 0xFFFFFFFF",
+        Heartbeat(2, 0xFFFFFFFF),
+    )
+    s.rx(
+        "telemetry_crc_mismatch",
+        "壊れたフレーム：CRC 不一致 → 破棄",
+        Telemetry(3, 0xFFFFFFFF, 2600, 0, 1, 0),
+        corrupt=True,
+    )
+    s.rx(
+        "telemetry_after_reboot",
+        "uptime_ms の減少 → 再起動と判定。STATE を求め、TELEMETRY は変換せず破棄",
+        Telemetry(0, 50, 2400, 0, 0, 0),
+    )
+    s.rx(
+        "telemetry_awaiting_state",
+        "STATE 待ちの TELEMETRY も破棄（破棄件数を数える）",
+        Telemetry(1, 1050, 2410, 0, 1, 0),
+    )
+    s.rx(
+        "state_after_reboot",
+        "再起動後の STATE：boot_id '00000001'、fw_version 0x0103 → '1.3'、連番は振り直し",
+        State(2, 0x0103, 0x00000001, 2000),
+    )
+    s.rx(
+        "telemetry_new_boot",
+        "新しい boot_id での TELEMETRY",
+        Telemetry(3, 2050, 2420, 0, 1, 250),
+    )
+    return s.goldens
+
+
+def render(goldens: list[Golden]) -> dict[str, str]:
+    """ファイル名 → 内容。"""
+    files: dict[str, str] = {}
+    for order, g in enumerate(goldens, start=1):
+        stem = f"{order:02d}_{g.name}"
+        body: dict[str, Any] = {
+            "name": g.name,
+            "order": order,
+            "direction": g.direction,
+            "description": g.description,
+            "frame": _frame_fields(g.frame),
+            "hex": _hex(g.data),
+        }
+        body.update(g.extra)
+        files[f"{stem}.hex"] = _hex(g.data) + "\n"
+        files[f"{stem}.json"] = json.dumps(body, ensure_ascii=False, indent=2) + "\n"
+    return files
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="UART ゴールデンフレームを生成する")
+    parser.add_argument("--check", action="store_true", help="書き出さずに差分を調べる")
+    parser.add_argument("--out", type=Path, default=GOLDEN_DIR)
+    args = parser.parse_args(argv)
+    files = render(build_session())
+    out: Path = args.out
+    existing = {p.name for p in out.glob("*.hex")} | {p.name for p in out.glob("*.json")}
+    if args.check:
+        differ = sorted(
+            name
+            for name, text in files.items()
+            if not (out / name).is_file() or (out / name).read_text(encoding="utf-8") != text
+        )
+        stale = sorted(existing - set(files))
+        for name in differ:
+            print(f"差分あり: {name}")
+        for name in stale:
+            print(f"不要なファイル: {name}")
+        return 1 if differ or stale else 0
+    out.mkdir(parents=True, exist_ok=True)
+    for name in existing - set(files):
+        (out / name).unlink()
+    for name, text in files.items():
+        (out / name).write_text(text, encoding="utf-8")
+    print(f"{len(files) // 2} 件のゴールデンを {out} に書き出した")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

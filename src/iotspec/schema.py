@@ -26,6 +26,7 @@ __all__ = [
     "ValidationError",
     "iter_errors",
     "json_pointer",
+    "registry",
     "select_schema",
     "validate",
     "validator_for",
@@ -53,13 +54,14 @@ def _file_name(schema_name: str) -> str:
 
 
 @cache
-def _registry() -> Registry[Any]:
+def registry() -> Registry[Any]:
+    """schemas/ のすべての Schema を登録したレジストリ（$ref の解決用）。"""
     resources = []
     for path in sorted(SCHEMA_DIR.glob("*.schema.json")):
         contents = json.loads(path.read_text(encoding="utf-8"))
         resources.append((contents["$id"], Resource.from_contents(contents, DRAFT202012)))
-    registry: Registry[Any] = Registry().with_resources(resources)
-    return registry.crawl()
+    reg: Registry[Any] = Registry().with_resources(resources)
+    return reg.crawl()
 
 
 @cache
@@ -69,7 +71,7 @@ def validator_for(schema_name: str) -> Draft202012Validator:
         raise KeyError(schema_name)
     contents = json.loads((SCHEMA_DIR / _file_name(schema_name)).read_text(encoding="utf-8"))
     Draft202012Validator.check_schema(contents)
-    return Draft202012Validator(contents, registry=_registry())
+    return Draft202012Validator(contents, registry=registry())
 
 
 def select_schema(message: object) -> str | None:

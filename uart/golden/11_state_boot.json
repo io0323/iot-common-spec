@@ -1,0 +1,50 @@
+{
+  "name": "state_boot",
+  "order": 11,
+  "direction": "01->03",
+  "description": "起動後の STATE：fw_version 0x0102 → '1.2'、boot_id → '7f3a9c01'、mode は INIT",
+  "frame": {
+    "type": "STATE",
+    "type_code": 4,
+    "seq": 1,
+    "fw_version": 258,
+    "boot_id": 2134547457,
+    "period_ms": 1000
+  },
+  "hex": "03 04 01 0c 08 02 01 01 9c 3a 7f e8 03 5e be 00",
+  "received_at": "2026-11-20T06:00:05.500Z",
+  "expected": {
+    "envelope": {
+      "schema": "iot.v1.state",
+      "msg_id": "01M7VRMT3W0000000000000001",
+      "device_id": "mcu-c-01",
+      "seq": 1,
+      "boot_id": "7f3a9c01",
+      "ts": "2026-11-20T06:00:05.500Z",
+      "ts_source": "gateway",
+      "payload": {
+        "status": "online",
+        "mode": "INIT",
+        "channels": [
+          {
+            "channel": "temp_board",
+            "unit": "degC",
+            "period_ms": 1000
+          }
+        ],
+        "actuators": [
+          {
+            "id": "fan_main",
+            "min": 0,
+            "max": 1000,
+            "max_on_s": null
+          }
+        ],
+        "fw_version": "1.2"
+      }
+    },
+    "discarded": null,
+    "request_state": false,
+    "dropped_telemetry_total": 1
+  }
+}

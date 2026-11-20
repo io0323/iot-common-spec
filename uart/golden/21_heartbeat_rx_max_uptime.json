@@ -1,0 +1,20 @@
+{
+  "name": "heartbeat_rx_max_uptime",
+  "order": 21,
+  "direction": "01->03",
+  "description": "境界値：uptime_ms 0xFFFFFFFF",
+  "frame": {
+    "type": "HEARTBEAT",
+    "type_code": 3,
+    "seq": 2,
+    "uptime_ms": 4294967295
+  },
+  "hex": "03 03 02 08 04 ff ff ff ff 61 89 00",
+  "received_at": "2026-11-20T06:00:10.500Z",
+  "expected": {
+    "envelope": null,
+    "discarded": null,
+    "request_state": false,
+    "dropped_telemetry_total": 1
+  }
+}

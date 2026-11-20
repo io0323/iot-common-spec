@@ -1,0 +1,20 @@
+{
+  "name": "heartbeat_rx",
+  "order": 14,
+  "direction": "01->03",
+  "description": "01 → 03 の HEARTBEAT（電文にはしない）",
+  "frame": {
+    "type": "HEARTBEAT",
+    "type_code": 3,
+    "seq": 4,
+    "uptime_ms": 2000
+  },
+  "hex": "03 03 04 04 04 d0 07 01 03 18 9c 00",
+  "received_at": "2026-11-20T06:00:07.000Z",
+  "expected": {
+    "envelope": null,
+    "discarded": null,
+    "request_state": false,
+    "dropped_telemetry_total": 1
+  }
+}

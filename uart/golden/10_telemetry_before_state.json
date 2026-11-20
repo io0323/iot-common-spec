@@ -1,0 +1,24 @@
+{
+  "name": "telemetry_before_state",
+  "order": 10,
+  "direction": "01->03",
+  "description": "STATE より前の TELEMETRY：変換せず破棄し、STATE を求める",
+  "frame": {
+    "type": "TELEMETRY",
+    "type_code": 1,
+    "seq": 0,
+    "uptime_ms": 900,
+    "temp_c100": 2500,
+    "quality": 0,
+    "state": 0,
+    "fan_pm": 0
+  },
+  "hex": "02 01 01 04 0a 84 03 01 03 c4 09 01 01 01 03 9e a4 00",
+  "received_at": "2026-11-20T06:00:05.000Z",
+  "expected": {
+    "envelope": null,
+    "discarded": "awaiting_state",
+    "request_state": true,
+    "dropped_telemetry_total": 1
+  }
+}

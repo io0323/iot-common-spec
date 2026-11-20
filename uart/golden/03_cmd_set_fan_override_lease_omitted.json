@@ -1,0 +1,30 @@
+{
+  "name": "cmd_set_fan_override_lease_omitted",
+  "order": 3,
+  "direction": "03->01",
+  "description": "境界値：level 0、lease_s 省略 → ttl_s 60（既定値）",
+  "frame": {
+    "type": "CMD",
+    "type_code": 16,
+    "seq": 2,
+    "cmd_ref": 0,
+    "op": 1,
+    "ttl_s": 60,
+    "args": [
+      0
+    ],
+    "raw_args": "",
+    "op_name": "SET_FAN_OVERRIDE"
+  },
+  "hex": "03 10 02 02 07 01 03 01 3c 01 01 03 2a 51 00",
+  "input_cmd_payload": {
+    "cmd_id": "01JD3R0C5K7M2N4P6R8T0V2X4Y",
+    "op": "set_actuator",
+    "args": {
+      "id": "fan_main",
+      "level": 0
+    },
+    "priority": "auto"
+  },
+  "cmd_ref": 0
+}

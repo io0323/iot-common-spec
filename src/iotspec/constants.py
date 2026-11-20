@@ -139,3 +139,55 @@ LATE_PERIOD_MULTIPLIER: Final = 3
 """ts が受信時刻より過去で、差が周期の3倍を超えたら遅延到着。"""
 LATE_MAX_AGE_S: Final = 5 * 60
 """遅延到着とみなす差の上限（5分以内）。これを超える差は時刻ずれの扱い。"""
+
+# --- UART フレーム（第7章） ---
+UART_BAUD_RATE: Final = 115_200
+"""物理層：115200 bps、8N1、フロー制御なし。"""
+UART_FRAME_DELIMITER: Final = 0x00
+"""COBS で符号化したフレームの区切り。"""
+UART_HEADER_SIZE: Final = 4
+"""[種別 u8][seq u16][長さ u8]。"""
+UART_CRC_SIZE: Final = 2
+"""CRC-16/CCITT-FALSE（u16、リトルエンディアン）。"""
+UART_PAYLOAD_MAX: Final = 200
+"""ペイロード長の上限（バイト）。"""
+UART_SEQ_MODULO: Final = 65_536
+"""UART の seq（u16）は65,536で一周する。共通エンベロープでは一周ごとにこれを加える。"""
+
+CRC16_POLY: Final = 0x1021
+CRC16_INIT: Final = 0xFFFF
+CRC16_XOROUT: Final = 0x0000
+
+# 種別（第7章「種別と対応」）
+UART_TYPE_TELEMETRY: Final = 0x01
+UART_TYPE_EVENT: Final = 0x02
+UART_TYPE_HEARTBEAT: Final = 0x03
+UART_TYPE_STATE: Final = 0x04
+UART_TYPE_CMD: Final = 0x10
+UART_TYPE_ACK: Final = 0x11
+
+# CMD の op（第7章）
+UART_OP_SET_FAN_OVERRIDE: Final = 0x01
+UART_OP_CLEAR_OVERRIDE: Final = 0x02
+UART_OP_SET_THRESHOLD: Final = 0x03
+UART_OP_GET_STATUS: Final = 0x10
+UART_OP_GET_DIAG: Final = 0x11
+UART_OP_NAMES: Final[dict[int, str]] = {
+    UART_OP_SET_FAN_OVERRIDE: "SET_FAN_OVERRIDE",
+    UART_OP_CLEAR_OVERRIDE: "CLEAR_OVERRIDE",
+    UART_OP_SET_THRESHOLD: "SET_THRESHOLD",
+    UART_OP_GET_STATUS: "GET_STATUS",
+    UART_OP_GET_DIAG: "GET_DIAG",
+}
+
+# 生存監視（第7章）
+UART_HEARTBEAT_PERIOD_S: Final = 1
+"""HEARTBEAT は双方向1秒周期。"""
+UART_HEARTBEAT_LOSS_S: Final = 3
+"""3秒途絶えたら相手を切断とみなす。"""
+UART_UPSTREAM_LOST_S: Final = 10
+"""作品01は上位の HEARTBEAT が10秒途絶えたら手動指定を解除し UPSTREAM_LOST を送る。"""
+UART_STATE_PERIOD_S: Final = 60
+"""作品01は起動後の最初のフレームとして STATE を送り、以後60秒ごとにも送る。"""
+UART_INITIAL_DEVICE_STATE: Final = "INIT"
+"""TELEMETRY を受ける前の state の mode（v0.2.1、#16）。"""

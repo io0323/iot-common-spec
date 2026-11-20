@@ -74,7 +74,7 @@ JSON上の値は浮動小数点数で、上記の単位そのものを表す（�
 
 | kind | payloadの主な項目 |
 |---|---|
-| telemetry | `readings[]`：`{channel, value, unit, quality}`。`actuators[]`：`{id, level, owner}`（任意） |
+| telemetry | `readings[]`：`{channel, value, unit, quality}`。`actuators[]`：`{id, level, owner}`（任意）。`device_state`（任意の文字列。デバイス内の状態名。v0.2.1で追加） |
 | event | `code`, `severity`, `message`（任意）, `channel`（任意）, `value`（任意）, `detail`（任意のobject） |
 | state | `status`（online／offline）, `mode`, `channels[]`：`{channel, unit, period_ms}`, `actuators[]`：`{id, min, max, max_on_s}`, `fw_version` |
 | cmd | 下記 |
@@ -148,7 +148,7 @@ JSON上の値は浮動小数点数で、上記の単位そのものを表す（�
 |---|---|---|---|
 | `msg_id` | 各メッセージの発信元。UARTから変換したものは03 | ログの追跡と相関 | 全体 |
 | `boot_id` ＋ `seq` | 発信元 | 欠損と重複の判定（第5章） | 発信元・kindごと |
-| `request_id` | 04。手動操作は通常のULID、スケジュール実行は時刻部＝予定時刻、乱数部＝SHA-256(schedule_id, planned_at) の先頭80ビットで決定的に作る | 要求の再送と重複排除 | 全体 |
+| `request_id` | 04。手動操作は通常のULID、スケジュール実行は時刻部＝予定時刻、乱数部＝SHA-256(schedule_id, planned_at) の先頭80ビットで決定的に作る。ハッシュの入力はUTF-8の `"{schedule_id}|{planned_at}"`（schedule_idはゼロ埋めなしの10進、planned_atはUTC・ISO 8601・ミリ秒・末尾Z。例：`12|2026-11-20T22:00:00.000Z`）。v0.2.1で明記 | 要求の再送と重複排除 | 全体 |
 | `cmd_id` | 03 | 指令の再送と重複排除、要求との紐付け | 全体 |
 | `cmd_ref` | 03（UART専用。`cmd_id` と1対1） | UARTで `cmd_id` の代わりに使う短い番号 | 作品01との間。65,536で一周 |
 
@@ -179,6 +179,8 @@ JSON上の値は浮動小数点数で、上記の単位そのものを表す（�
 - 制御を続ける場合、03は lease_s の3分の1ごと（60秒なら20秒ごと）に新しい `cmd_id` で同じ対象に送り直す。デバイスは同じ対象への新しい指令で古い指令を置き換える
 - 制御をやめるときは `release` を送る。届かなくても期限で自然に解除される
 - 絶対時刻を持たない作品01は `ttl_s`（受信時点からの秒数）で扱う
+- リースはデバイスが指令を受信した時刻から数え、「受信時刻＋`lease_s`」ちょうどで切れる。`expires_at` はこれとは別の検査で、`expires_at` を過ぎて届いた指令は実行しない（v0.2.1で明記）
+- `set_actuator` 以外の op に付いた `lease_s` は値によらず無視する。JSON Schemaも `lease_s` の範囲を `set_actuator` のときだけ検査する（v0.2.1で明記）
 
 リースは「その間、上位が制御する権利」の期限であり、「その間、出力を続けてよい」という意味ではない。デバイスの安全制約はリースより常に優先する。たとえば `lease_s: 600` でポンプを動かしても、作品02は連続30秒で止め、ackに `limited: true` を付ける。更新が2回続けて届かなくても期限には間に合うが、3回途絶えると期限が切れ、デバイスは自律制御に戻る。
 
@@ -269,6 +271,14 @@ JSON上の値は浮動小数点数で、上記の単位そのものを表す（�
 | 連番 | `seq:u16` | `seq`（一周回数を加えた32ビット、上記） |
 | 時刻 | `uptime_ms:u32` | `ts` は受信時刻（`ts_source: gateway`）。元の `uptime_ms` もエンベロープに残す |
 | 品質 | `quality:u8` | `quality`（値の対応表どおり） |
+
+### 変換の決め事（v0.2.1）
+
+- **デバイスプロファイル**：STATEフレームにないstateの必須項目（`mode`・`channels[]`・`actuators[]`）は、デバイスプロファイル `profiles/{device_id}.yaml` から補う。`channels[].period_ms` はSTATEの `period_ms` を優先する。`mode` は直近のTELEMETRYの `state` を状態名にしたもの（受信前は `INIT`）。状態番号と状態名の対応、汎用指令とUARTのopの対応もプロファイルで定める
+- **状態名**：TELEMETRYの `state` はtelemetryの任意項目 `device_state` に、EVENTの `from`・`to` はeventの `detail.from_state`・`detail.to_state` に、いずれもプロファイルの状態名で入れる
+- **fw_version**：`fw_version:u16` は上位バイト＝メジャー、下位バイト＝マイナーで `"{major}.{minor}"` とする（例：`0x0102` → `"1.2"`）
+- **applied**：ACKの `applied:u16` は、出力を扱うop（SET_FAN_OVERRIDE）のときだけcmd/ackの `applied` に `{"level": n}` として入れる。それ以外のopでは `applied` を付けない
+- **CMDのargs**：SET_FAN_OVERRIDEは `duty_pm:u16`、SET_THRESHOLDは `warn_c100:i16, crit_c100:i16, hyst_c100:i16`、CLEAR_OVERRIDE・GET_STATUS・GET_DIAGは引数なし（`set_param` の引数は未定）
 
 STATEが破損で失われた場合に備え、作品03は `uptime_ms` が減ったら再起動とみなしてGET_STATUSでSTATEを求める。新しいSTATEを受けるまでのTELEMETRYは変換せずに破棄し、件数を記録する（古い `boot_id` を付けたまま送らないため）。
 

@@ -49,6 +49,10 @@
             }
           }
         },
+        "device_state": {
+          "description": "任意。デバイス内の状態名（例：UART の TELEMETRY の state をプロファイルの states で名前にしたもの。v0.2.1 で追加）",
+          "type": "string"
+        },
         "actuators": {
           "description": "任意（第3章）",
           "type": "array",
@@ -56,8 +60,7 @@
             "type": "object",
             "required": [
               "id",
-              "level",
-              "owner"
+              "level"
             ],
             "properties": {
               "id": {
@@ -67,7 +70,7 @@
                 "$ref": "common.schema.json#/$defs/level"
               },
               "owner": {
-                "description": "値は未定義（open-questions #10）",
+                "description": "任意。値は未定義（open-questions #10・#24）。UART 経由のデバイスには出力の持ち主の情報がないため付けない",
                 "type": "string"
               }
             }

@@ -1,0 +1,50 @@
+{
+  "name": "telemetry_seq_wrapped",
+  "order": 19,
+  "direction": "01->03",
+  "description": "seq の一周：UART の seq 0 → エンベロープの seq 65536。temp_c100 32767、stale",
+  "frame": {
+    "type": "TELEMETRY",
+    "type_code": 1,
+    "seq": 0,
+    "uptime_ms": 4000,
+    "temp_c100": 32767,
+    "quality": 1,
+    "state": 2,
+    "fan_pm": 500
+  },
+  "hex": "02 01 01 04 0a a0 0f 01 09 ff 7f 01 02 f4 01 6b 6e 00",
+  "received_at": "2026-11-20T06:00:09.500Z",
+  "expected": {
+    "envelope": {
+      "schema": "iot.v1.telemetry",
+      "msg_id": "01M7VRMY0W0000000000000008",
+      "device_id": "mcu-c-01",
+      "seq": 65536,
+      "boot_id": "7f3a9c01",
+      "ts": "2026-11-20T06:00:09.500Z",
+      "ts_source": "gateway",
+      "uptime_ms": 4000,
+      "payload": {
+        "readings": [
+          {
+            "channel": "temp_board",
+            "value": 327.67,
+            "unit": "degC",
+            "quality": "stale"
+          }
+        ],
+        "device_state": "WARNING",
+        "actuators": [
+          {
+            "id": "fan_main",
+            "level": 500
+          }
+        ]
+      }
+    },
+    "discarded": null,
+    "request_state": false,
+    "dropped_telemetry_total": 1
+  }
+}
