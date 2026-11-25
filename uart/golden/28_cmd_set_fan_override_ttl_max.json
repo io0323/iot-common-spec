@@ -1,0 +1,31 @@
+{
+  "name": "cmd_set_fan_override_ttl_max",
+  "order": 28,
+  "direction": "03->01",
+  "description": "境界値：lease_s 600 → ttl_s 600（上限。601 は作品01が rejected invalid_arg。v0.2.2 #40）",
+  "frame": {
+    "type": "CMD",
+    "type_code": 16,
+    "seq": 8,
+    "cmd_ref": 6,
+    "op": 1,
+    "ttl_s": 600,
+    "args": [
+      300
+    ],
+    "raw_args": "",
+    "op_name": "SET_FAN_OVERRIDE"
+  },
+  "hex": "03 10 08 03 07 06 08 01 58 02 2c 01 27 ca 00",
+  "input_cmd_payload": {
+    "cmd_id": "01JD3R0F5K7M2N4P6R8T0V2X4Y",
+    "op": "set_actuator",
+    "args": {
+      "id": "fan_main",
+      "level": 300
+    },
+    "priority": "safety",
+    "lease_s": 600
+  },
+  "cmd_ref": 6
+}

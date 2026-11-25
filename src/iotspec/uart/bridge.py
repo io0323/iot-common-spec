@@ -7,6 +7,9 @@
 - 送信（03 → 01）：cmd の payload をプロファイルの commands で CMD に変換する。
   cmd_ref は呼び出し側が渡す。
 - uptime_ms が減ったら再起動とみなし、新しい STATE を受けるまで TELEMETRY を変換せずに数える。
+- DIAG（v0.2.2 #37）は電文にせず、復号した項目を BridgeResult.diag に入れて not_converted で数える。
+  作品03の内部の操作（GET_DIAG など。internal_frame で送る）の ACK も cmd/ack にせず not_converted。
+- BOOT の EVENT は from を reset_reason とし、detail を {"reset_reason": ...} だけにする（#38）。
 
 変換結果は必ず schemas/ で検証し、適合しないものは破棄（理由つき）にする。
 """
@@ -18,14 +21,16 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from iotspec.clock import Clock
+from iotspec.clock import Clock, format_ts
 from iotspec.constants import (
     KIND_CMD_ACK,
     KIND_EVENT,
     KIND_STATE,
     KIND_TELEMETRY,
     SCHEMA_NAMES,
+    UART_BOOT_EVENT_TO,
     UART_INITIAL_DEVICE_STATE,
+    UART_OP_NAMES,
     UART_OP_SET_FAN_OVERRIDE,
     UART_SEQ_MODULO,
     UINT32_MAX,
@@ -37,8 +42,10 @@ from iotspec.profile import Profile
 from iotspec.schema import validate
 from iotspec.uart.frames import (
     CMD_ARG_NAMES,
+    CMD_ARGS_FORMAT,
     Ack,
     Cmd,
+    Diag,
     Discarded,
     Event,
     Frame,
@@ -51,6 +58,7 @@ from iotspec.uart.mapping import (
     EVENT_CODE,
     QUALITY,
     REASON,
+    RESET_REASON,
     SEVERITY,
     STATUS,
     UnknownValueError,
@@ -72,6 +80,9 @@ TELEMETRY_ACTUATOR = "fan_main"
 TEMP_SCALE = 100  # temp_c100 ÷ 100 = degC
 _UART_SEQ_MAX = UART_SEQ_MODULO - 1
 _NO_LEASE_TTL_S = 0  # リースを持たない op の ttl_s（open-questions #21）
+_BOOT_CODE = EVENT_CODE.to_uart("BOOT")
+NOT_CONVERTED = "not_converted"
+"""MQTT に変換しないフレームの破棄理由（DIAG と内部の操作の ACK。v0.2.2 #37）。"""
 
 
 def format_boot_id(boot_id: int) -> str:
@@ -118,12 +129,16 @@ class BridgeResult:
 
     envelopes：発行する電文（0件か1件）。discarded：破棄した理由（破棄しなければ None）。
     request_state：GET_STATUS で STATE を求めるべきとき True（再起動の検知、STATE 未受信）。
+    diag：DIAG を受けたとき、復号した項目に受信時刻（received_at）と boot_id を加えたもの（#37）。
+    internal_ack：内部の操作（internal_frame で送った CMD）の ACK を受けたとき、その内容。
     """
 
     envelopes: tuple[Envelope, ...] = ()
     discarded: str | None = None
     detail: str = ""
     request_state: bool = False
+    diag: dict[str, Any] | None = None
+    internal_ack: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -173,6 +188,8 @@ class UartBridge:
         self._period_ms: int | None = None
         self._fw_version = "0.0"
         self._cmd_table: dict[int, tuple[str, int]] = {}
+        self._internal_refs: dict[int, int] = {}
+        """内部の操作の cmd_ref → UART の op（ACK を cmd/ack にしない。#37）。"""
 
     # ------------------------------------------------------------ 受信（01 → 03）
 
@@ -191,7 +208,7 @@ class UartBridge:
             return self._on_state(frame)
 
         request = False
-        if isinstance(frame, Telemetry | Event | Heartbeat):
+        if isinstance(frame, Telemetry | Event | Heartbeat | Diag):
             if self._last_uptime is not None and frame.uptime_ms < self._last_uptime:
                 self.awaiting_state = True
                 self._reboot_detected = True
@@ -208,6 +225,10 @@ class UartBridge:
             if isinstance(frame, Telemetry):
                 self.dropped_telemetry += 1
             return self._discard("awaiting_state", type(frame).__name__, request)
+        if isinstance(frame, Diag):
+            return self._discard(NOT_CONVERTED, "DIAG", request, diag=self._diag(frame))
+        if isinstance(frame, Ack) and frame.cmd_ref in self._internal_refs:
+            return self._internal_ack(frame, request)
         try:
             if isinstance(frame, Telemetry):
                 envelope = self._telemetry(frame, seq)
@@ -289,17 +310,56 @@ class UartBridge:
         return self._envelope(KIND_TELEMETRY, seq, payload, frame.uptime_ms)
 
     def _event(self, frame: Event, seq: int) -> Envelope:
+        if frame.code == _BOOT_CODE:
+            # BOOT に限り from は reset_reason、to は 0（v0.2.2 #38）
+            if frame.to_state != UART_BOOT_EVENT_TO:
+                raise UnknownValueError(
+                    f"BOOT の to が {UART_BOOT_EVENT_TO} でない: {frame.to_state}"
+                )
+            detail: dict[str, Any] = {"reset_reason": RESET_REASON.to_common(frame.from_state)}
+        else:
+            detail = {
+                "from_state": self.profile.state_name(frame.from_state),
+                "to_state": self.profile.state_name(frame.to_state),
+            }
         payload = {
             "code": EVENT_CODE.to_common(frame.code),
             "severity": SEVERITY.to_common(frame.severity),
             "channel": TELEMETRY_CHANNEL,
             "value": frame.temp_c100 / TEMP_SCALE,
-            "detail": {
-                "from_state": self.profile.state_name(frame.from_state),
-                "to_state": self.profile.state_name(frame.to_state),
-            },
+            "detail": detail,
         }
         return self._envelope(KIND_EVENT, seq, payload, frame.uptime_ms)
+
+    def _diag(self, frame: Diag) -> dict[str, Any]:
+        """DIAG の項目（復号した値そのまま）に受信時刻と boot_id を加える（#37）。"""
+        return {
+            "received_at": format_ts(self.clock.now()),
+            "boot_id": self.boot_id,
+            "uptime_ms": frame.uptime_ms,
+            "reset_reason": frame.reset_reason,
+            "reset_count": frame.reset_count,
+            "rx_crc_errors": frame.rx_crc_errors,
+            "rx_frame_errors": frame.rx_frame_errors,
+            "max_loop_us": frame.max_loop_us,
+            "overruns": frame.overruns,
+        }
+
+    def _internal_ack(self, frame: Ack, request: bool) -> BridgeResult:
+        """内部の操作の ACK：cmd/ack にせず not_converted で数え、内容を返す（#37）。"""
+        op = self._internal_refs[frame.cmd_ref]
+        try:
+            ack = {
+                "cmd_ref": frame.cmd_ref,
+                "op": UART_OP_NAMES.get(op, f"0x{op:02x}"),
+                "status": STATUS.to_common(frame.status),
+                "reason": REASON.to_common(frame.reason),
+                "limited": frame.limited,
+                "applied": frame.applied,
+            }
+        except UnknownValueError as exc:
+            return self._discard("unknown_value", str(exc), request)
+        return self._discard(NOT_CONVERTED, f"{ack['op']} の ACK", request, internal_ack=ack)
 
     def _ack(self, frame: Ack, seq: int, cmd_id: str, uart_op: int) -> Envelope:
         if frame.limited not in (0, 1):
@@ -345,9 +405,23 @@ class UartBridge:
             return self._discard("schema_invalid", "; ".join(errors), request)
         return BridgeResult(envelopes=(envelope,), request_state=request)
 
-    def _discard(self, reason: str, detail: str, request: bool = False) -> BridgeResult:
+    def _discard(
+        self,
+        reason: str,
+        detail: str,
+        request: bool = False,
+        *,
+        diag: dict[str, Any] | None = None,
+        internal_ack: dict[str, Any] | None = None,
+    ) -> BridgeResult:
         self.discards[reason] += 1
-        return BridgeResult(discarded=reason, detail=detail, request_state=request)
+        return BridgeResult(
+            discarded=reason,
+            detail=detail,
+            request_state=request,
+            diag=diag,
+            internal_ack=internal_ack,
+        )
 
     # ------------------------------------------------------------ 送信（03 → 01）
 
@@ -386,6 +460,24 @@ class UartBridge:
             ttl_s = lease_s if lease_s is not None else _NO_LEASE_TTL_S
         frame = Cmd(self.next_tx_seq(Cmd.TYPE), cmd_ref, spec.uart_op, ttl_s, values)
         self._cmd_table[cmd_ref] = (str(cmd["cmd_id"]), spec.uart_op)
+        self._internal_refs.pop(cmd_ref, None)
+        return frame
+
+    def internal_frame(self, op: int, cmd_ref: int, args: tuple[int, ...] = ()) -> Cmd:
+        """作品03の内部の操作（汎用指令との対応がない GET_DIAG・SET_THRESHOLD）の CMD を作る。
+
+        cmd_ref を記憶し、その ACK は cmd/ack に変換しない（not_converted。v0.2.2 #37）。
+        リースを持たない op なので ttl_s は 0（#21）。
+        """
+        if not 0 <= cmd_ref <= _UART_SEQ_MAX:
+            raise ValueError(f"cmd_ref が u16 の範囲外: {cmd_ref}")
+        if op == UART_OP_SET_FAN_OVERRIDE or op not in CMD_ARGS_FORMAT:
+            raise ValueError(f"内部の操作にできない op: 0x{op:02x}")
+        if len(args) != len(CMD_ARG_NAMES[op]):
+            raise ValueError(f"op 0x{op:02x} の args は {len(CMD_ARG_NAMES[op])} 個")
+        frame = Cmd(self.next_tx_seq(Cmd.TYPE), cmd_ref, op, _NO_LEASE_TTL_S, tuple(args))
+        self._internal_refs[cmd_ref] = op
+        self._cmd_table.pop(cmd_ref, None)
         return frame
 
     def heartbeat_frame(self, uptime_ms: int) -> Heartbeat:

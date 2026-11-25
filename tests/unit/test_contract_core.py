@@ -36,6 +36,10 @@ def test_required_checks_exist() -> None:
             "boot_order",
             "seq_per_type",
             "frame_encoding",
+            "boot_reset_reason",
+            "get_diag",
+            "ttl_s_range",
+            "no_expired",
         },
         "mcu-cpp-01": {
             "schema",

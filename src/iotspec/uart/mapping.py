@@ -8,10 +8,13 @@ from __future__ import annotations
 
 from typing import Final
 
+from iotspec.constants import UART_RESET_REASONS
+
 __all__ = [
     "EVENT_CODE",
     "QUALITY",
     "REASON",
+    "RESET_REASON",
     "SEVERITY",
     "STATUS",
     "UnknownValueError",
@@ -71,6 +74,10 @@ EVENT_CODE: Final = ValueTable(
         6: "SENSOR_RECOVERED",
         7: "UPSTREAM_LOST",
         8: "UPSTREAM_RESTORED",  # v0.2.1 #34
+        9: "INTERLOCK_ACTIVE",  # v0.2.2 #39
+        10: "INTERLOCK_RELEASED",  # v0.2.2 #39
     },
 )
 SEVERITY: Final = ValueTable("severity", {0: "info", 1: "warning", 2: "critical"})
+RESET_REASON: Final = ValueTable("reset_reason", dict(UART_RESET_REASONS))
+"""BOOT の EVENT の from と DIAG の reset_reason（v0.2.2 #38）。"""

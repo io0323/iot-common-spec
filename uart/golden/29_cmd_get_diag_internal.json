@@ -1,0 +1,20 @@
+{
+  "name": "cmd_get_diag_internal",
+  "order": 29,
+  "direction": "03->01",
+  "description": "内部の操作として GET_DIAG（cmd_ref 0x0007、ACK は cmd/ack にしない。v0.2.2 #37）",
+  "frame": {
+    "type": "CMD",
+    "type_code": 16,
+    "seq": 9,
+    "cmd_ref": 7,
+    "op": 17,
+    "ttl_s": 0,
+    "args": [],
+    "raw_args": "",
+    "op_name": "GET_DIAG"
+  },
+  "hex": "03 10 09 03 05 07 02 11 01 03 03 42 00",
+  "internal_op": "GET_DIAG",
+  "cmd_ref": 7
+}

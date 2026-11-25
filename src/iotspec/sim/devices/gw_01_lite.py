@@ -4,7 +4,11 @@
   無応答など）を request/ack で返す。同じ request_id の再送には現在の状態を返す（第4章、1時間記憶）
 - UART 上位側：作品01（またはその代役）に1秒ごとの HEARTBEAT と CMD を送り、ACK を検証する。
   指令は毎秒1件・未完了4件まで、ACK が2秒来なければ同じ cmd_ref で最大3回再送する（第4章）。
-  受けたフレームは UartBridge で mcu-c-01 名義の電文に変換して発行する
+  受けたフレームは UartBridge で mcu-c-01 名義の電文に変換して発行する。
+  expires_at を過ぎた指令は UART に送らずに終え、mcu-c-01 名義の cmd/ack は作らない。要求元には
+  request/ack（rejected、reason expired）で伝える（v0.2.2 #40）。
+  GET_DIAG は内部の操作（submit_internal）で、DIAG は MQTT に変換せず diag_history に残し、
+  その ACK も cmd/ack にしない（v0.2.2 #37）
 
 通信は持たない。MQTT へ送る電文は outbox、UART へ送るバイト列は uart_tx に積む。
 時刻は Clock から取る。
@@ -19,7 +23,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Final
 
-from iotspec.clock import Clock
+from iotspec.clock import Clock, parse_ts
 from iotspec.constants import (
     CMD_REF_MODULO,
     DEVICE_APP_01,
@@ -69,6 +73,10 @@ class CmdRecord:
     repeat: int = 0
     request_id: str | None = None
     """この指令を生んだ request（app-01 の要求を UART の指令に変えた場合）。"""
+    internal_op: int | None = None
+    """作品03の内部の操作（GET_DIAG など）。汎用指令との対応がなく、ACK は cmd/ack にしない。"""
+    expired: bool = False
+    """expires_at を過ぎていたので UART に送らずに終えた（#40）。"""
 
 
 @dataclass
@@ -109,6 +117,8 @@ class Gw01Lite:
         self.stats: Counter[str] = Counter()
         self.requests: dict[str, RequestRecord] = {}
         self.cmds: dict[str, CmdRecord] = {}
+        self.diag_history: list[dict[str, Any]] = []
+        """受けた DIAG（復号した項目、受信時刻、boot_id）。MQTT には出さない（#37）。"""
         self.bridge = (
             UartBridge(uart_profile, clock, bridged_by=self.device_id)
             if uart_profile is not None
@@ -289,6 +299,13 @@ class Gw01Lite:
         self._queue.append(record)
         return record
 
+    def submit_internal(self, op: int, args: tuple[int, ...] = ()) -> CmdRecord:
+        """内部の操作（GET_DIAG・SET_THRESHOLD）を待ち行列に入れる。ACK は cmd/ack にしない。"""
+        record = CmdRecord(new_ulid(self.clock), {"args": list(args)}, internal_op=op)
+        self.cmds[record.cmd_id] = record
+        self._queue.append(record)
+        return record
+
     def feed_uart(self, data: bytes) -> None:
         """作品01から受けたバイト列を処理する。変換した電文は mcu-c-01 名義で outbox に積む。"""
         assert self.bridge is not None
@@ -318,6 +335,12 @@ class Gw01Lite:
             self.stats[f"uart_discarded:{result.discarded}"] += 1
         if result.request_state:
             self.submit_uart({"op": "get_status"})
+        if result.diag is not None:
+            self.diag_history.append(result.diag)
+        if result.internal_ack is not None:
+            record = self._in_flight.pop(int(result.internal_ack["cmd_ref"]), None)
+            if record is not None:
+                record.ack = dict(result.internal_ack)
         for envelope in result.envelopes:
             message = envelope.to_dict()
             self.outbox.append(
@@ -355,7 +378,9 @@ class Gw01Lite:
         status = cmd.ack["status"] if cmd.ack is not None else None
         if status == "accepted":
             return
-        if status == "done":
+        if cmd.expired:
+            request.status, request.reason = "rejected", "expired"  # #40
+        elif status == "done":
             request.status, request.reason = "done", None
         else:
             # 指令が拒否・失敗・タイムアウト：要求元には failed
@@ -437,8 +462,28 @@ class Gw01Lite:
             for _ in range(record.repeat):
                 self._transmit(record, now, count_attempt=False)
 
+    def _expired(self, record: CmdRecord, now: datetime) -> bool:
+        expires_at = record.payload.get("expires_at")
+        return isinstance(expires_at, str) and now >= parse_ts(expires_at)
+
     def _transmit(self, record: CmdRecord, now: datetime, *, count_attempt: bool = True) -> bool:
         assert self.bridge is not None and record.cmd_ref is not None
+        if record.attempts == 0 and self._expired(record, now):
+            # expires_at を過ぎた指令は UART に送らずに終える。cmd/ack は作らない（#40）
+            record.expired = True
+            self.stats["uart_cmd_expired"] += 1
+            self._finish_request(record)
+            return False
+        if record.internal_op is not None:
+            args = tuple(int(a) for a in record.payload.get("args", []))
+            self.uart_tx += encode_frame(
+                self.bridge.internal_frame(record.internal_op, record.cmd_ref, args)
+            )
+            if count_attempt:
+                record.attempts += 1
+                record.sent_at = now
+                self._last_cmd_sent = now
+            return True
         frame = self.bridge.command_to_frame(record.payload, record.cmd_ref)
         if isinstance(frame, CommandRejected):
             record.ack = {"cmd_id": record.cmd_id, "status": "rejected", "reason": frame.reason}

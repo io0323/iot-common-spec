@@ -16,17 +16,21 @@ from iotspec.constants import (
     UART_ACK_TIMEOUT_S,
     UART_HEARTBEAT_PERIOD_S,
     UART_OP_CLEAR_OVERRIDE,
+    UART_OP_GET_DIAG,
     UART_OP_GET_STATUS,
     UART_OP_SET_FAN_OVERRIDE,
+    UART_RESET_REASONS,
     UART_SEQ_MODULO,
+    UART_TTL_MAX_S,
+    UART_TTL_MIN_S,
     UART_UPSTREAM_LOST_S,
 )
 from iotspec.contract.context import ContractContext, UartPeer
 from iotspec.contract.core import Checker, Skip, check
 from iotspec.profile import load_profile
 from iotspec.uart.bridge import UartBridge
-from iotspec.uart.frames import Ack, Cmd, Discarded, Event, State, Telemetry, encode_frame
-from iotspec.uart.mapping import EVENT_CODE
+from iotspec.uart.frames import Ack, Cmd, Diag, Discarded, Event, State, Telemetry, encode_frame
+from iotspec.uart.mapping import EVENT_CODE, REASON, STATUS
 
 ROLE = "mcu-c-01"
 STATE_WAIT_S = 10.0
@@ -35,6 +39,10 @@ RESTORED_WAIT_S = 4.0
 CODE_BOOT = EVENT_CODE.to_uart("BOOT")
 CODE_LOST = EVENT_CODE.to_uart("UPSTREAM_LOST")
 CODE_RESTORED = EVENT_CODE.to_uart("UPSTREAM_RESTORED")
+DONE = STATUS.to_uart("done")
+REJECTED = STATUS.to_uart("rejected")
+INVALID_ARG = REASON.to_uart("invalid_arg")
+EXPIRED = REASON.to_uart("expired")
 _cmd_ref = [0x4000]
 
 
@@ -114,6 +122,29 @@ async def boot_order(ctx: ContractContext, c: Checker) -> None:
         c.expect(state_at < boot_at, "BOOT が STATE より先に来た", expected="STATE → BOOT")
 
 
+@check(
+    ROLE,
+    "boot_reset_reason",
+    "BOOT の from が reset_reason（0〜6）で、to が 0（v0.2.2 #38）",
+    order=6,
+    needs_target_control=True,
+)
+async def boot_reset_reason(ctx: ContractContext, c: Checker) -> None:
+    peer = await ready(ctx)
+    boots = [f for f in peer.frames(Event) if f.code == CODE_BOOT]
+    if not boots:
+        raise Skip("BOOT を受けていない")
+    for boot in boots:
+        c.expect(
+            boot.from_state in UART_RESET_REASONS,
+            "BOOT の from が reset_reason の値（0〜6）でない",
+            ref=repr(boot),
+            expected=f"0〜{max(UART_RESET_REASONS)}",
+            actual=boot.from_state,
+        )
+        c.expect(boot.to_state == 0, "BOOT の to が 0 でない", ref=repr(boot), actual=boot.to_state)
+
+
 @check(ROLE, "ack", "CMD に同じ cmd_ref の ACK（done）が2秒以内に返る", order=10)
 async def ack(ctx: ContractContext, c: Checker) -> None:
     peer = await ready(ctx)
@@ -145,6 +176,74 @@ async def ack(ctx: ContractContext, c: Checker) -> None:
             ref=f"cmd_ref={cmd.cmd_ref}",
             expected=(1, 400),
             actual=(got.status, got.applied),
+        )
+    await send_cmd(peer, UART_OP_CLEAR_OVERRIDE)
+
+
+@check(
+    ROLE,
+    "get_diag",
+    "GET_DIAG に DIAG → ACK（done）の順で返る（v0.2.2 #37）",
+    order=12,
+)
+async def get_diag(ctx: ContractContext, c: Checker) -> None:
+    peer = await ready(ctx)
+    cmd, since = await send_cmd(peer, UART_OP_GET_DIAG)
+    got = await wait_ack(peer, cmd.cmd_ref, since)
+    if not c.expect(got is not None, "ACK が返らない", ref=f"GET_DIAG cmd_ref={cmd.cmd_ref}"):
+        return
+    assert got is not None
+    c.expect(
+        got.status == DONE,
+        "GET_DIAG の ACK が done でない",
+        ref=f"cmd_ref={cmd.cmd_ref}",
+        expected=DONE,
+        actual=got.status,
+    )
+    after = [r.frame for r in peer.received if r.at >= since and not isinstance(r.frame, Discarded)]
+    ack_at = next(i for i, f in enumerate(after) if isinstance(f, Ack) and f.cmd_ref == cmd.cmd_ref)
+    diags = [f for f in after[:ack_at] if isinstance(f, Diag)]
+    c.expect(
+        bool(diags),
+        "GET_DIAG の ACK より前に DIAG が来ない",
+        ref=f"cmd_ref={cmd.cmd_ref}",
+        expected="DIAG → ACK",
+        actual=[type(f).__name__ for f in after[: ack_at + 1]],
+    )
+    for diag in diags:
+        c.expect(
+            diag.reset_reason in UART_RESET_REASONS,
+            "DIAG の reset_reason が 0〜6 でない",
+            ref=repr(diag),
+            actual=diag.reset_reason,
+        )
+
+
+@check(
+    ROLE,
+    "ttl_s_range",
+    f"SET_FAN_OVERRIDE の ttl_s は {UART_TTL_MIN_S}〜{UART_TTL_MAX_S}。"
+    "0 と 601 は rejected（invalid_arg）（v0.2.2 #40）",
+    order=15,
+)
+async def ttl_s_range(ctx: ContractContext, c: Checker) -> None:
+    peer = await ready(ctx)
+    for ttl_s, expected in (
+        (UART_TTL_MIN_S - 1, (REJECTED, INVALID_ARG)),
+        (UART_TTL_MAX_S + 1, (REJECTED, INVALID_ARG)),
+        (UART_TTL_MAX_S, (DONE, 0)),
+    ):
+        cmd, since = await send_cmd(peer, UART_OP_SET_FAN_OVERRIDE, ttl_s, (300,))
+        got = await wait_ack(peer, cmd.cmd_ref, since)
+        if not c.expect(got is not None, "ACK が返らない", ref=f"ttl_s={ttl_s}"):
+            continue
+        assert got is not None
+        c.expect(
+            (got.status, got.reason) == expected,
+            "ttl_s の範囲の扱いが違う",
+            ref=f"SET_FAN_OVERRIDE ttl_s={ttl_s} cmd_ref={cmd.cmd_ref}",
+            expected=expected,
+            actual=(got.status, got.reason),
         )
     await send_cmd(peer, UART_OP_CLEAR_OVERRIDE)
 
@@ -256,6 +355,21 @@ async def frame_encoding(ctx: ContractContext, c: Checker) -> None:
         )
 
 
+@check(ROLE, "no_expired", "ACK の reason に expired（4）を使わない（v0.2.2 #40）", order=90)
+async def no_expired(ctx: ContractContext, c: Checker) -> None:
+    peer = uart(ctx)
+    acks = peer.frames(Ack)
+    c.expect(bool(acks), "ACK を1件も受けていない")
+    for ack in acks:
+        c.expect(
+            ack.reason != EXPIRED,
+            "作品01が expired を返した",
+            ref=repr(ack),
+            expected="expired 以外",
+            actual=ack.reason,
+        )
+
+
 @check(ROLE, "seq_per_type", "UART の seq がフレーム種別ごとの連番（#25）", order=90)
 async def seq_per_type(ctx: ContractContext, c: Checker) -> None:
     peer = uart(ctx)
@@ -296,7 +410,7 @@ async def converted_schema(ctx: ContractContext, c: Checker) -> None:
             continue
         result = bridge.receive(r.frame)
         c.expect(
-            result.discarded in (None, "awaiting_state", "unknown_cmd_ref"),
+            result.discarded in (None, "awaiting_state", "unknown_cmd_ref", "not_converted"),
             "変換できないフレーム",
             ref=repr(r.frame),
             expected="変換できる値",

@@ -17,6 +17,7 @@ from typing import ClassVar, Final, Literal
 
 from iotspec.constants import (
     UART_CRC_SIZE,
+    UART_DIAG_PAYLOAD_SIZE,
     UART_FRAME_DELIMITER,
     UART_HEADER_SIZE,
     UART_OP_CLEAR_OVERRIDE,
@@ -27,6 +28,7 @@ from iotspec.constants import (
     UART_PAYLOAD_MAX,
     UART_TYPE_ACK,
     UART_TYPE_CMD,
+    UART_TYPE_DIAG,
     UART_TYPE_EVENT,
     UART_TYPE_HEARTBEAT,
     UART_TYPE_STATE,
@@ -40,6 +42,7 @@ __all__ = [
     "CMD_ARG_NAMES",
     "Ack",
     "Cmd",
+    "Diag",
     "DiscardReason",
     "Discarded",
     "Event",
@@ -147,6 +150,39 @@ class State:
 
 
 @dataclass(frozen=True)
+class Diag:
+    """DIAG（01→03、v0.2.2 #37）。GET_DIAG に DIAG → ACK(done) の順で返す。
+
+    rx_frame_errors は COBS・長さ・種別・受信あふれの合計。u16 の項目はすべて 0xFFFF で飽和する。
+    """
+
+    TYPE: ClassVar[int] = UART_TYPE_DIAG
+    FORMAT: ClassVar[str] = "<IBHHHHH"
+    seq: int
+    uptime_ms: int
+    reset_reason: int
+    reset_count: int
+    rx_crc_errors: int
+    rx_frame_errors: int
+    max_loop_us: int
+    overruns: int
+
+    def _fields(self) -> tuple[int, ...]:
+        return (
+            self.uptime_ms,
+            self.reset_reason,
+            self.reset_count,
+            self.rx_crc_errors,
+            self.rx_frame_errors,
+            self.max_loop_us,
+            self.overruns,
+        )
+
+
+assert struct.calcsize(Diag.FORMAT) == UART_DIAG_PAYLOAD_SIZE
+
+
+@dataclass(frozen=True)
 class Ack:
     TYPE: ClassVar[int] = UART_TYPE_ACK
     FORMAT: ClassVar[str] = "<HBBBH"
@@ -185,10 +221,10 @@ class Cmd:
         return struct.pack(fmt, *self.args) if fmt else b""
 
 
-Frame = Telemetry | Event | Heartbeat | State | Ack | Cmd
+Frame = Telemetry | Event | Heartbeat | State | Diag | Ack | Cmd
 
-_FIXED: Final[dict[int, type[Telemetry | Event | Heartbeat | State | Ack]]] = {
-    cls.TYPE: cls for cls in (Telemetry, Event, Heartbeat, State, Ack)
+_FIXED: Final[dict[int, type[Telemetry | Event | Heartbeat | State | Diag | Ack]]] = {
+    cls.TYPE: cls for cls in (Telemetry, Event, Heartbeat, State, Diag, Ack)
 }
 
 

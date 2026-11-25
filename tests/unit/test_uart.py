@@ -36,6 +36,7 @@ from iotspec.uart.crc import crc16_ccitt_false
 from iotspec.uart.frames import (
     Ack,
     Cmd,
+    Diag,
     Discarded,
     Event,
     Frame,
@@ -145,6 +146,7 @@ frames = st.one_of(
     st.builds(Event, u16, u32, u8, u8, u8, u8, i16),
     st.builds(Heartbeat, u16, u32),
     st.builds(State, u16, u16, u32, u16),
+    st.builds(Diag, u16, u32, u8, u16, u16, u16, u16, u16),
     st.builds(Ack, u16, u16, u8, u8, u8, u16),
     cmd_frames(),
 )
@@ -194,6 +196,9 @@ def _corrupt_crc(frame: Frame) -> bytes:
         (_raw_frame(c.UART_TYPE_HEARTBEAT, 1, b"\x01\x02\x03\x04", length=5), "length_mismatch"),
         (_raw_frame(0x7E, 1, b""), "unknown_type"),
         (_raw_frame(c.UART_TYPE_HEARTBEAT, 1, b"\x01\x02"), "payload_size"),
+        (_raw_frame(c.UART_TYPE_DIAG, 1, b"\x00" * 14), "payload_size"),
+        (_raw_frame(c.UART_TYPE_DIAG, 1, b"\x00" * 16), "payload_size"),
+        (_raw_frame(c.UART_TYPE_DIAG, 1, b"\x00" * 15, length=16), "length_mismatch"),
         (_raw_frame(c.UART_TYPE_CMD, 1, b"\x01\x00\x01\x3c\x00"), "args_size"),
         (cobs.encode(b"\x03\x01") + b"\x00", "too_short"),
     ],
@@ -462,6 +467,103 @@ def test_bridge_ack_applied_only_for_output_op() -> None:
     assert validate(a.to_dict()) == validate(b.to_dict()) == []
 
 
+@given(st.builds(Diag, u16, u32, u8, u16, u16, u16, u16, u16))
+def test_diag_round_trip(frame: Diag) -> None:
+    """v0.2.2 #37：DIAG はペイロード15バイト（u32, u8, u16 ×5）。"""
+    data = encode_frame(frame)
+    raw = cobs.decode(data[:-1])
+    assert raw[0] == c.UART_TYPE_DIAG == 0x05
+    assert raw[3] == c.UART_DIAG_PAYLOAD_SIZE == 15
+    assert decode_frame(data) == frame
+
+
+def test_bridge_diag_is_not_converted_and_kept() -> None:
+    bridge, clock = _booted()
+    clock.advance(2)
+    result = bridge.receive(Diag(0, 4321, 3, 2, 1, 0xFFFF, 900, 7))
+    assert result.envelopes == ()
+    assert result.discarded == "not_converted"
+    assert result.diag == {
+        "received_at": "2026-11-20T06:00:02.000Z",
+        "boot_id": "a1b2c3d4",
+        "uptime_ms": 4321,
+        "reset_reason": 3,
+        "reset_count": 2,
+        "rx_crc_errors": 1,
+        "rx_frame_errors": 0xFFFF,
+        "max_loop_us": 900,
+        "overruns": 7,
+    }
+    assert bridge.discards["not_converted"] == 1
+
+
+def test_bridge_diag_while_awaiting_state_and_reboot_detection() -> None:
+    bridge, _ = _bridge()
+    first = bridge.receive(Diag(0, 100, 1, 0, 0, 0, 0, 0))
+    assert (first.discarded, first.diag, first.request_state) == ("awaiting_state", None, True)
+    bridge.receive(State(0, 0x0102, 0x1, 1000))
+    assert bridge.receive(Diag(1, 5000, 1, 0, 0, 0, 0, 0)).discarded == "not_converted"
+    # DIAG の uptime_ms の減少も再起動の検知に使う
+    detected = bridge.receive(Diag(2, 10, 1, 0, 0, 0, 0, 0))
+    assert (detected.discarded, detected.request_state) == ("awaiting_state", True)
+
+
+def test_bridge_boot_detail_has_only_reset_reason() -> None:
+    bridge, _ = _booted()
+    for code_value, name in c.UART_RESET_REASONS.items():
+        (env,) = bridge.receive(
+            Event(code_value, 10 + code_value, 1, 0, code_value, 0, 2500)
+        ).envelopes
+        assert env.payload["code"] == "BOOT"
+        assert env.payload["detail"] == {"reset_reason": name}
+        assert validate(env.to_dict()) == []
+    assert bridge.receive(Event(7, 100, 1, 0, 7, 0, 2500)).discarded == "unknown_value"
+    assert bridge.receive(Event(8, 110, 1, 0, 1, 1, 2500)).discarded == "unknown_value"  # to ≠ 0
+
+
+def test_bridge_interlock_events_keep_from_and_to_state() -> None:
+    bridge, _ = _booted()
+    (active,) = bridge.receive(Event(0, 10, 9, 1, 3, 3, 6100)).envelopes
+    (released,) = bridge.receive(Event(1, 20, 10, 0, 1, 1, 3000)).envelopes
+    assert (active.payload["code"], active.payload["severity"]) == ("INTERLOCK_ACTIVE", "warning")
+    assert active.payload["detail"] == {"from_state": "CRITICAL", "to_state": "CRITICAL"}
+    assert (released.payload["code"], released.payload["severity"]) == (
+        "INTERLOCK_RELEASED",
+        "info",
+    )
+    assert released.payload["detail"] == {"from_state": "NORMAL", "to_state": "NORMAL"}
+
+
+def test_bridge_internal_get_diag_ack_is_not_converted() -> None:
+    bridge, _ = _booted()
+    frame = bridge.internal_frame(c.UART_OP_GET_DIAG, 0x0042)
+    assert (frame.op, frame.ttl_s, frame.args) == (c.UART_OP_GET_DIAG, 0, ())
+    result = bridge.receive(Ack(0, 0x0042, 1, 0, 0, 0))
+    assert (result.envelopes, result.discarded) == ((), "not_converted")
+    assert result.internal_ack == {
+        "cmd_ref": 0x0042,
+        "op": "GET_DIAG",
+        "status": "done",
+        "reason": None,
+        "limited": 0,
+        "applied": 0,
+    }
+    # 同じ cmd_ref を汎用指令に使い直したら、その ACK は cmd/ack にする
+    cmd = {"cmd_id": "01JD3R0A5K7M2N4P6R8T0V2X4Y", "op": "get_status"}
+    assert isinstance(bridge.command_to_frame(cmd, 0x0042), Cmd)
+    (env,) = bridge.receive(Ack(1, 0x0042, 1, 0, 0, 0)).envelopes
+    assert env.kind == c.KIND_CMD_ACK
+    with pytest.raises(ValueError):
+        bridge.internal_frame(c.UART_OP_SET_FAN_OVERRIDE, 1)
+    with pytest.raises(ValueError):
+        bridge.internal_frame(c.UART_OP_SET_THRESHOLD, 1, (1, 2))
+    assert bridge.internal_frame(c.UART_OP_SET_THRESHOLD, 2, (4500, 6000, 300)).args == (
+        4500,
+        6000,
+        300,
+    )
+
+
 def test_command_to_frame_maps_and_rejects() -> None:
     bridge, _ = _booted()
     base = {"cmd_id": "01JD3R0A5K7M2N4P6R8T0V2X4Y", "priority": "auto"}
@@ -553,6 +655,7 @@ def test_golden_counts_per_type() -> None:
         by_type[g["frame"]["type"]] = by_type.get(g["frame"]["type"], 0) + 1
     for name in ("TELEMETRY", "EVENT", "HEARTBEAT", "STATE", "CMD", "ACK"):
         assert by_type.get(name, 0) >= 2, name
+    assert by_type.get("DIAG", 0) >= 1
     acks = [g["frame"]["limited"] for g in goldens if g["frame"]["type"] == "ACK"]
     assert {0, 1} <= set(acks)
     ops = {g["frame"]["op"] for g in goldens if g["frame"]["type"] == "CMD"}
@@ -595,6 +698,10 @@ def test_golden_session_replays_through_a_fresh_bridge() -> None:
                 built = bridge.command_to_frame(g["input_cmd_payload"], g["cmd_ref"])
                 assert isinstance(built, Cmd)
                 assert encode_frame(built).hex(" ") == g["hex"], g["name"]
+            elif "internal_op" in g:
+                op = {v: k for k, v in c.UART_OP_NAMES.items()}[g["internal_op"]]
+                built = bridge.internal_frame(op, g["cmd_ref"])
+                assert encode_frame(built).hex(" ") == g["hex"], g["name"]
             elif frame["type"] == "HEARTBEAT":
                 assert encode_frame(bridge.heartbeat_frame(frame["uptime_ms"])).hex(" ") == g["hex"]
             else:
@@ -613,6 +720,7 @@ def test_golden_session_replays_through_a_fresh_bridge() -> None:
         assert result.discarded == expected["discarded"], g["name"]
         assert result.request_state == expected["request_state"], g["name"]
         assert bridge.dropped_telemetry == expected["dropped_telemetry_total"], g["name"]
+        assert result.diag == expected.get("diag"), g["name"]
         if got is not None:
             assert validate(got) == []
 

@@ -29,15 +29,18 @@ from iotspec.constants import (
     UART_CMD_MAX_RETRIES,
     UART_CMD_RATE_PER_S,
     UART_HEARTBEAT_LOSS_S,
+    UART_OP_GET_DIAG,
 )
 from iotspec.contract.context import ContractContext, Observed, UartPeer
 from iotspec.contract.core import Checker, Skip, check
 from iotspec.ids import new_ulid
-from iotspec.uart.frames import Ack, Cmd, Frame, State
+from iotspec.uart.frames import Ack, Cmd, Diag, Frame, State
 
 ROLE = "gw-01"
 GOLDEN_DIR = Path(__file__).resolve().parents[4] / "uart" / "golden"
 GOLDEN_GAP_S = 0.3
+LAST_GOLDEN_BOOT_ID = 0x00000002
+"""ゴールデンの最後の起動の boot_id（32番）。以後の相手役のフレームはその続きとして送る。"""
 SETTLE_S = 1.5
 HOLD_ACKS_S = 6.0
 REQUESTS = 6
@@ -57,7 +60,10 @@ def goldens() -> list[dict[str, Any]]:
 
 
 class Device:
-    """作品01の役：CMD に ACK を返す（保留もできる）。直近の cmd_ref には前回の ACK を返す。"""
+    """作品01の役：CMD に ACK を返す（保留もできる）。直近の cmd_ref には前回の ACK を返す。
+
+    GET_DIAG には DIAG → ACK（done）の順で返す（v0.2.2 #37）。
+    """
 
     def __init__(self, peer: UartPeer) -> None:
         self.peer = peer
@@ -79,6 +85,10 @@ class Device:
             applied = frame.args[0] if frame.args else 0
             fields = (1, 0, 0, applied)
             self._acks[frame.cmd_ref] = fields
+        if frame.op == UART_OP_GET_DIAG:
+            self.peer.send(
+                Diag(self.peer.next_seq(Diag.TYPE), self.peer.uptime_ms(), 1, 0, 0, 0, 0, 0)
+            )
         self.peer.send(Ack(self.peer.next_seq(Ack.TYPE), frame.cmd_ref, *fields))
 
     def release(self) -> None:
@@ -109,12 +119,19 @@ def comparable(message: dict[str, Any]) -> dict[str, Any]:
 @check(
     ROLE,
     "golden_conversion",
-    "UART のゴールデンフレームを順に送ると、期待どおりのエンベロープに変換される",
+    "UART のゴールデンフレームを順に送ると、期待どおりのエンベロープに変換される"
+    "（DIAG と GET_DIAG の ACK は MQTT に出ない）",
     order=5,
 )
 async def golden_conversion(ctx: ContractContext, c: Checker) -> None:
     dev = device(ctx)
-    rx = [g for g in goldens() if g["direction"] == "01->03" and g["frame"]["type"] != "ACK"]
+    # ACK は対象が採番した cmd_ref と結び付かないので、電文にならないもの（GET_DIAG の ACK）だけ送る
+    rx = [
+        g
+        for g in goldens()
+        if g["direction"] == "01->03"
+        and (g["frame"]["type"] != "ACK" or g["expected"]["envelope"] is None)
+    ]
     if not rx:
         raise Skip("ゴールデンが見つからない")
     started = time.monotonic()
@@ -155,6 +172,14 @@ async def golden_conversion(ctx: ContractContext, c: Checker) -> None:
     asked = [cmd for at, cmd in dev.cmds if at >= started and cmd.op == 0x10]
     c.expect(
         bool(asked), "STATE 待ちになっても GET_STATUS を送ってこない", expected="GET_STATUS の CMD"
+    )
+    # DIAG と GET_DIAG の ACK（not_converted）が電文になっていない
+    silent = [g["name"] for g in rx if g["expected"]["discarded"] == "not_converted"]
+    c.expect(
+        len(silent) >= 2 and len(observed) == len(expected),
+        "DIAG または GET_DIAG の ACK が MQTT の電文になった",
+        expected=f"{', '.join(silent)} は電文にしない",
+        actual=f"{len(observed)}件",
     )
     # 以後の相手役のフレームは、ゴールデンの最後の起動の続きとして送る
     dev.peer.reset_uptime(3000)
@@ -197,7 +222,7 @@ def _acks_for(ctx: ContractContext, request_id: str, since: float) -> list[Obser
 async def uart_cmd_limits(ctx: ContractContext, c: Checker) -> None:
     dev = device(ctx)
     dev.peer.start_heartbeat()
-    dev.peer.send(State(dev.peer.next_seq(State.TYPE), 0x0103, 0x00000001, 2000))
+    dev.peer.send(State(dev.peer.next_seq(State.TYPE), 0x0103, LAST_GOLDEN_BOOT_ID, 2000))
     await asyncio.sleep(SETTLE_S)
     dev.hold = True
     started = time.monotonic()

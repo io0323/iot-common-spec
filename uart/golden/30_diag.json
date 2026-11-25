@@ -1,0 +1,37 @@
+{
+  "name": "diag",
+  "order": 30,
+  "direction": "01->03",
+  "description": "DIAG（v0.2.2 #37）：変換せず not_converted。expected.diag に項目・受信時刻・boot_id",
+  "frame": {
+    "type": "DIAG",
+    "type_code": 5,
+    "seq": 0,
+    "uptime_ms": 2600,
+    "reset_reason": 3,
+    "reset_count": 12,
+    "rx_crc_errors": 4,
+    "rx_frame_errors": 65535,
+    "max_loop_us": 850,
+    "overruns": 0
+  },
+  "hex": "02 05 01 04 0f 28 0a 01 03 03 0c 02 04 05 ff ff 52 03 01 03 79 a4 00",
+  "received_at": "2026-11-20T06:00:15.000Z",
+  "expected": {
+    "envelope": null,
+    "discarded": "not_converted",
+    "request_state": false,
+    "dropped_telemetry_total": 3,
+    "diag": {
+      "received_at": "2026-11-20T06:00:15.000Z",
+      "boot_id": "00000001",
+      "uptime_ms": 2600,
+      "reset_reason": 3,
+      "reset_count": 12,
+      "rx_crc_errors": 4,
+      "rx_frame_errors": 65535,
+      "max_loop_us": 850,
+      "overruns": 0
+    }
+  }
+}

@@ -163,6 +163,8 @@ UART_TYPE_TELEMETRY: Final = 0x01
 UART_TYPE_EVENT: Final = 0x02
 UART_TYPE_HEARTBEAT: Final = 0x03
 UART_TYPE_STATE: Final = 0x04
+UART_TYPE_DIAG: Final = 0x05
+"""DIAG（01→03）。GET_DIAG への応答（v0.2.2 #37）。MQTT には変換しない。"""
 UART_TYPE_CMD: Final = 0x10
 UART_TYPE_ACK: Final = 0x11
 
@@ -179,6 +181,30 @@ UART_OP_NAMES: Final[dict[int, str]] = {
     UART_OP_GET_STATUS: "GET_STATUS",
     UART_OP_GET_DIAG: "GET_DIAG",
 }
+
+# DIAG（v0.2.2 #37）
+UART_DIAG_PAYLOAD_SIZE: Final = 15
+"""DIAG のペイロード長：uptime_ms:u32, reset_reason:u8, reset_count:u16, rx_crc_errors:u16,
+rx_frame_errors:u16, max_loop_us:u16, overruns:u16。"""
+UART_DIAG_U16_SATURATED: Final = 0xFFFF
+"""DIAG の u16 の項目はすべてこの値で飽和させる（一周させない）。"""
+
+# リセット要因（v0.2.2 #38）。UART の BOOT イベントの from と DIAG の reset_reason に入れる値
+UART_RESET_REASONS: Final[dict[int, str]] = {
+    0: "unknown",
+    1: "power_on",
+    2: "pin",
+    3: "watchdog",
+    4: "software",
+    5: "brownout",
+    6: "low_power",
+}
+UART_BOOT_EVENT_TO: Final = 0
+"""BOOT の EVENT の to は 0（v0.2.2 #38）。"""
+
+# CMD の ttl_s の範囲（v0.2.2 #40）。SET_FAN_OVERRIDE の ttl_s が範囲外なら rejected（invalid_arg）
+UART_TTL_MIN_S: Final = 1
+UART_TTL_MAX_S: Final = 600
 
 # 生存監視（第7章）
 UART_HEARTBEAT_PERIOD_S: Final = 1

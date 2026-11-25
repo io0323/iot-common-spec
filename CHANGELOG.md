@@ -1,5 +1,50 @@
 # Changelog
 
+## v0.2.2（2026-11-26）
+
+作品01の実装前レビューで出た変更案 CR-1〜5（作品01 `docs/design/03-common-spec-cr-v0.2.2.md`）を取り込みました。
+**トピックのメジャー版は `v1` のまま**で、変更はすべて UART の種別・コード値と Schema の項目の追加です。
+v0.2.1 の電文は v0.2.2 の Schema でもすべて通ります。
+
+### 決定（[docs/open-questions.md](docs/open-questions.md) の #37〜#41）
+
+- **DIAG**（#37、CR-1）：UART に種別 DIAG（0x05、01→03、15バイト）を新設。作品01は GET_DIAG に DIAG → ACK(done) の順で返す。
+  作品03は DIAG を MQTT に変換せず（破棄理由 `not_converted`）、履歴に残す。GET_DIAG は作品03の内部の操作で、その ACK も
+  cmd/ack にしない（`not_converted`）
+- **BOOT のリセット要因**（#38、CR-2）：UART の BOOT の `from` を reset_reason（0〜6）、`to` を 0 とする。MQTT の event の
+  BOOT は `detail` を `{"reset_reason": ...}` だけにする。event の Schema で BOOT の `detail.reset_reason` を7値の列挙で検査
+- **INTERLOCK**（#39、CR-3）：UART の EVENT code 9 INTERLOCK_ACTIVE（warning）、10 INTERLOCK_RELEASED（info）
+- **ttl_s と expired**（#40、CR-4）：作品01は expired を返さない。SET_FAN_OVERRIDE の ttl_s は 1〜600、範囲外は rejected
+  （invalid_arg）。expires_at を過ぎた指令は作品03が UART に送らずに終え、要求元に request/ack（rejected、expired）で伝える
+- **状態遷移と EVENT**（#41、CR-5）：1回の状態遷移につき EVENT は1件。遷移→コードの表を spec.md 第7章に追加
+- 代役 mcu-c-01 の内部の値を作品01の設計書に合わせた（#32 に追記）：しきい値 45／60／3℃、CRITICAL・SENSOR_FAULT の承認、
+  状態ごとのファンの下限と limited、SET_THRESHOLD の拒否条件、1遷移1件の EVENT
+- 仮実装：INTERLOCK を送る契機と順序（#42）、expires_at を検査するのは最初の送信の前だけ（#43）。
+  未決：rejected の SET_FAN_OVERRIDE の cmd/ack に付く applied（#44、v0.2.2 では変えない）
+
+### ゴールデン（`uart/golden/`、27件 → 35件）
+
+- 変更：17番 `ack_rejected_expired` → `ack_rejected_invalid_arg`（ttl_s 範囲外の SET_FAN_OVERRIDE への ACK。cmd_ref 0xFFFF、
+  reason invalid_arg）。17番以外の01〜27番は変わっていません
+- 追加（同じセッションの続き）：28 `cmd_set_fan_override_ttl_max`（ttl_s 600）、29 `cmd_get_diag_internal`、30 `diag`
+  （`expected.diag` に各項目）、31 `ack_get_diag_done`（not_converted）、32 `state_reboot_watchdog`、33 `event_boot_watchdog`
+  （reset_reason watchdog）、34 `event_interlock_active`、35 `event_interlock_released`
+
+### 契約テスト・ライブラリ
+
+- role mcu-c-01：`boot_reset_reason`・`get_diag`・`ttl_s_range`・`no_expired` を追加
+- role gw-01：`golden_conversion` で DIAG と GET_DIAG の ACK も流し、MQTT に出ないことを確かめる。相手役は GET_DIAG に
+  DIAG → ACK を返す
+- `iotspec.uart`：`Diag`、`RESET_REASON`、`BridgeResult.diag`・`internal_ack`、`UartBridge.internal_frame`
+- シナリオ（mcu_c_01）：`reset_reason`・`acks_at_s` を追加
+- gw-01 簡易版：expires_at の扱い（#40）、`submit_internal`（GET_DIAG）、`diag_history`
+
+### 各作品への影響
+
+- 作品01：GET_DIAG に DIAG を返す、BOOT の from に reset_reason、INTERLOCK（code 9・10）を送る、ゴールデン35件
+- 作品03：DIAG・GET_DIAG の ACK を変換しない、BOOT の detail、expires_at を過ぎた指令を送らない
+- 作品04：BOOT の `detail.reset_reason`、INTERLOCK_ACTIVE／RELEASED を mcu-c-01 からも受ける
+
 ## v0.2.1（初回リリース、2026-11-20）
 
 共通仕様 v0.2 の実体の初回リリースです。仕様の本文は [docs/spec.md](docs/spec.md)、

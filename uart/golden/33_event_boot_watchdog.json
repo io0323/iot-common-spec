@@ -1,0 +1,43 @@
+{
+  "name": "event_boot_watchdog",
+  "order": 33,
+  "direction": "01->03",
+  "description": "STATE の直後の BOOT：from = reset_reason 3（watchdog）、to = 0 → detail は {reset_reason: watchdog} だけ（v0.2.2 #38）",
+  "frame": {
+    "type": "EVENT",
+    "type_code": 2,
+    "seq": 0,
+    "uptime_ms": 120,
+    "code": 1,
+    "severity": 0,
+    "from_state": 3,
+    "to_state": 0,
+    "temp_c100": 2400
+  },
+  "hex": "02 02 01 03 0a 78 01 01 02 01 02 03 05 60 09 20 8c 00",
+  "received_at": "2026-11-20T06:00:16.500Z",
+  "expected": {
+    "envelope": {
+      "schema": "iot.v1.event",
+      "msg_id": "01M7VRN4VM000000000000000E",
+      "device_id": "mcu-c-01",
+      "seq": 0,
+      "boot_id": "00000002",
+      "ts": "2026-11-20T06:00:16.500Z",
+      "ts_source": "gateway",
+      "uptime_ms": 120,
+      "payload": {
+        "code": "BOOT",
+        "severity": "info",
+        "channel": "temp_board",
+        "value": 24.0,
+        "detail": {
+          "reset_reason": "watchdog"
+        }
+      }
+    },
+    "discarded": null,
+    "request_state": false,
+    "dropped_telemetry_total": 3
+  }
+}
