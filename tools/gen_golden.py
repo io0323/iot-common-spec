@@ -29,12 +29,13 @@ from typing import Any
 from ulid import ULID
 
 from iotspec.clock import VirtualClock, format_ts
-from iotspec.constants import UART_OP_NAMES
+from iotspec.constants import UART_OP_GET_DIAG, UART_OP_NAMES
 from iotspec.profile import load_profile
 from iotspec.uart.bridge import CommandRejected, UartBridge
 from iotspec.uart.frames import (
     Ack,
     Cmd,
+    Diag,
     Event,
     Frame,
     Heartbeat,
@@ -110,6 +111,8 @@ class _Session:
             "request_state": result.request_state,
             "dropped_telemetry_total": self.bridge.dropped_telemetry,
         }
+        if result.diag is not None:
+            expected["diag"] = result.diag
         extra = {"received_at": format_ts(self.clock.now()), "expected": expected}
         self.goldens.append(Golden(name, description, "01->03", frame, data, extra))
 
@@ -120,6 +123,13 @@ class _Session:
         if isinstance(frame, CommandRejected):
             raise RuntimeError(f"{name}: 変換できない {frame}")
         extra = {"input_cmd_payload": cmd, "cmd_ref": cmd_ref}
+        self.goldens.append(Golden(name, description, "03->01", frame, encode_frame(frame), extra))
+
+    def tx_internal(self, name: str, description: str, op: int, cmd_ref: int) -> None:
+        """03 → 01：作品03の内部の操作（GET_DIAG など）。ACK は cmd/ack にしない。"""
+        self.clock.advance(STEP)
+        frame = self.bridge.internal_frame(op, cmd_ref)
+        extra = {"internal_op": UART_OP_NAMES[op], "cmd_ref": cmd_ref}
         self.goldens.append(Golden(name, description, "03->01", frame, encode_frame(frame), extra))
 
     def tx_raw(self, name: str, description: str, frame: Frame) -> None:
@@ -237,9 +247,10 @@ def build_session() -> list[Golden]:
         Ack(0, 0x1234, 1, 0, 1, 1000),
     )
     s.rx(
-        "ack_rejected_expired",
-        "ACK rejected expired（CLEAR_OVERRIDE なので applied を付けない）、limited なし",
-        Ack(1, 0x0001, 2, 4, 0, 0),
+        "ack_rejected_invalid_arg",
+        "ACK rejected invalid_arg（ttl_s 範囲外の SET_FAN_OVERRIDE、v0.2.2 #40）、limited なし、"
+        "applied 0 → cmd/ack の applied {level: 0}",
+        Ack(1, 0xFFFF, 2, 2, 0, 0),
     )
     s.rx(
         "telemetry_fault_min_temp",
@@ -292,6 +303,57 @@ def build_session() -> list[Golden]:
         "telemetry_new_boot",
         "新しい boot_id での TELEMETRY",
         Telemetry(2, 2050, 2420, 0, 1, 250),
+    )
+
+    # v0.2.2：28番以降（同じセッションの続き）
+    s.tx_cmd(
+        "cmd_set_fan_override_ttl_max",
+        "境界値：lease_s 600 → ttl_s 600（上限。601 は作品01が rejected invalid_arg。v0.2.2 #40）",
+        {
+            "cmd_id": "01JD3R0F5K7M2N4P6R8T0V2X4Y",
+            "op": "set_actuator",
+            "args": {"id": "fan_main", "level": 300},
+            "priority": "safety",
+            "lease_s": 600,
+        },
+        0x0006,
+    )
+    s.tx_internal(
+        "cmd_get_diag_internal",
+        "内部の操作として GET_DIAG（cmd_ref 0x0007、ACK は cmd/ack にしない。v0.2.2 #37）",
+        UART_OP_GET_DIAG,
+        0x0007,
+    )
+    s.rx(
+        "diag",
+        "DIAG（v0.2.2 #37）：変換せず not_converted。expected.diag に項目・受信時刻・boot_id",
+        Diag(0, 2600, 3, 12, 4, 0xFFFF, 850, 0),
+    )
+    s.rx(
+        "ack_get_diag_done",
+        "GET_DIAG の ACK done（DIAG の後）：内部の操作なので cmd/ack にせず not_converted",
+        Ack(2, 0x0007, 1, 0, 0, 0),
+    )
+    s.rx(
+        "state_reboot_watchdog",
+        "ウォッチドッグによる再起動後の STATE：boot_id '00000002'、種別ごとの連番は振り直し",
+        State(0, 0x0103, 0x00000002, 2000),
+    )
+    s.rx(
+        "event_boot_watchdog",
+        "STATE の直後の BOOT：from = reset_reason 3（watchdog）、to = 0 → "
+        "detail は {reset_reason: watchdog} だけ（v0.2.2 #38）",
+        Event(0, 120, 1, 0, 3, 0, 2400),
+    )
+    s.rx(
+        "event_interlock_active",
+        "EVENT：INTERLOCK_ACTIVE（code 9、v0.2.2 #39）warning、from・to は同じ WARNING",
+        Event(1, 1500, 9, 1, 2, 2, 4620),
+    )
+    s.rx(
+        "event_interlock_released",
+        "EVENT：INTERLOCK_RELEASED（code 10）info、from・to は同じ NORMAL",
+        Event(2, 2500, 10, 0, 1, 1, 4180),
     )
     return s.goldens
 

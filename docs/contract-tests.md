@@ -1,6 +1,6 @@
 # 契約テストの使い方（作品01〜04のリポジトリ向け）
 
-`iot-common-spec` の契約テストキットは、各作品の実装が共通仕様 v0.2.1 を守っているかを、
+`iot-common-spec` の契約テストキットは、各作品の実装が共通仕様 v0.2.2 を守っているかを、
 相手役（このリポジトリの代役）とのやり取りで確かめます。各作品のリポジトリの CI で実行してください。
 
 - 対象：あなたの作品（作品01〜04のどれか1つ）
@@ -13,10 +13,10 @@
 
 ```sh
 # uv のプロジェクトに依存として追加する（Python で書く作品04など）
-uv add "iotspec @ git+https://github.com/io0323/iot-common-spec@v0.2.1"
+uv add "iotspec @ git+https://github.com/io0323/iot-common-spec@v0.2.2"
 
 # コマンドだけを入れる（C・C++ の作品01〜03など）
-uv tool install "iotspec @ git+https://github.com/io0323/iot-common-spec@v0.2.1"
+uv tool install "iotspec @ git+https://github.com/io0323/iot-common-spec@v0.2.2"
 iotspec-contract --help
 ```
 
@@ -57,10 +57,14 @@ iotspec-contract --role <role> --list      # チェックの一覧
 | チェック | 内容 |
 |---|---|
 | `boot_order` | 起動後の最初のフレームが STATE で、その次の EVENT が BOOT（`--target-cmd` が必要） |
+| `boot_reset_reason` | BOOT の from が reset_reason（0〜6）で、to が 0（v0.2.2。`--target-cmd` が必要） |
 | `ack` | CMD（GET_STATUS・SET_FAN_OVERRIDE）に同じ cmd_ref の ACK（done）が2秒以内に返る |
+| `get_diag` | GET_DIAG に DIAG → ACK（done）の順で返る（v0.2.2） |
+| `ttl_s_range` | SET_FAN_OVERRIDE の ttl_s 0・601 は rejected（invalid_arg）、600 は done（v0.2.2） |
 | `duplicate_cmd_ref` | 重複した cmd_ref には前回の ACK を返し、指令を実行し直さない |
 | `upstream_lost_restored` | 上位の HEARTBEAT が10秒途絶えると手動指定を解除して UPSTREAM_LOST、戻ると UPSTREAM_RESTORED（EVENT code 8） |
 | `frame_encoding` | 受けた全フレームが CRC・COBS・長さとも正しく、参照実装と同じバイト列に符号化される |
+| `no_expired` | ACK の reason に expired を使わない（v0.2.2） |
 | `seq_per_type` | UART の seq がフレーム種別ごとの連番 |
 | `converted_schema` | 受けたフレームを参照実装（作品03の変換）で電文にすると、すべて JSON Schema に適合する |
 
@@ -103,7 +107,7 @@ iotspec-contract --role mcu-cpp-01 --target-cmd "./build/host/mcu_cpp_01 --broke
 
 | チェック | 内容 |
 |---|---|
-| `golden_conversion` | UART のゴールデンフレームを順に送ると、期待どおりのエンベロープ（msg_id・ts 以外の全項目）に変換される。STATE 待ちでは GET_STATUS を送る |
+| `golden_conversion` | UART のゴールデンフレームを順に送ると、期待どおりのエンベロープ（msg_id・ts 以外の全項目）に変換される。DIAG と GET_DIAG の ACK は MQTT に出ない（v0.2.2）。STATE 待ちでは GET_STATUS を送る |
 | `uart_cmd_limits` | 作品01への CMD は毎秒1件（再送を含む）・未完了4件まで、ACK が2秒来なければ同じ cmd_ref で最大3回再送 |
 | `request_ack` | request に accepted（cmd_id 付き）→ done を返し、同じ request_id の再送には現在の状態を返す |
 | `bridged_offline_state` | UART デバイスが3秒途絶えると、そのデバイス名義の offline の state を bridged_by 付き・retain で発行する |
@@ -161,7 +165,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: io0323/iot-common-spec
-          ref: v0.2.1
+          ref: v0.2.2
           path: iot-common-spec
       - uses: astral-sh/setup-uv@v6
         with:
@@ -171,7 +175,7 @@ jobs:
           iot-common-spec/deploy/mosquitto/gen_passwd.sh
           docker compose -f iot-common-spec/docker-compose.yml up -d mosquitto
       - name: 契約テストキット
-        run: uv tool install "iotspec @ git+https://github.com/io0323/iot-common-spec@v0.2.1"
+        run: uv tool install "iotspec @ git+https://github.com/io0323/iot-common-spec@v0.2.2"
       - name: 対象をビルド
         run: make host            # 作品ごとに読み替える
       - name: 契約テスト

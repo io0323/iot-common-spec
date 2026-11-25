@@ -58,6 +58,10 @@ def build_device(
             faults=faults,
             local_rules=config.local_rules,
             thresholds=Thresholds(**config.options.get("thresholds", {})),
+            reset_reason=config.options.get("reset_reason", "power_on"),
+            acks_at=[
+                scenario.start + timedelta(seconds=s) for s in config.options.get("acks_at_s", [])
+            ],
         )
     if config.type == "gw_01_lite":
         uart_profile = load_profile(DEVICE_MCU_C_01)

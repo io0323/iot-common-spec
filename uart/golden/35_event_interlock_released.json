@@ -1,0 +1,44 @@
+{
+  "name": "event_interlock_released",
+  "order": 35,
+  "direction": "01->03",
+  "description": "EVENT：INTERLOCK_RELEASED（code 10）info、from・to は同じ NORMAL",
+  "frame": {
+    "type": "EVENT",
+    "type_code": 2,
+    "seq": 2,
+    "uptime_ms": 2500,
+    "code": 10,
+    "severity": 0,
+    "from_state": 1,
+    "to_state": 1,
+    "temp_c100": 4180
+  },
+  "hex": "03 02 02 04 0a c4 09 01 02 0a 07 01 01 54 10 58 39 00",
+  "received_at": "2026-11-20T06:00:17.500Z",
+  "expected": {
+    "envelope": {
+      "schema": "iot.v1.event",
+      "msg_id": "01M7VRN5TW000000000000000G",
+      "device_id": "mcu-c-01",
+      "seq": 2,
+      "boot_id": "00000002",
+      "ts": "2026-11-20T06:00:17.500Z",
+      "ts_source": "gateway",
+      "uptime_ms": 2500,
+      "payload": {
+        "code": "INTERLOCK_RELEASED",
+        "severity": "info",
+        "channel": "temp_board",
+        "value": 41.8,
+        "detail": {
+          "from_state": "NORMAL",
+          "to_state": "NORMAL"
+        }
+      }
+    },
+    "discarded": null,
+    "request_state": false,
+    "dropped_telemetry_total": 3
+  }
+}

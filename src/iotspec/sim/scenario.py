@@ -43,10 +43,20 @@ def _find_scenario_dir() -> Path:
 SCENARIO_DIR: Path = _find_scenario_dir()
 """同梱のシナリオ（iotspec/_scenarios）か、リポジトリの sim/scenarios/。"""
 
-_OPTION_KEYS = frozenset({"thresholds", "uart_path", "uart_commands", "request_rules", "requests"})
+_OPTION_KEYS = frozenset(
+    {
+        "thresholds",
+        "uart_path",
+        "reset_reason",
+        "acks_at_s",
+        "uart_commands",
+        "request_rules",
+        "requests",
+    }
+)
 _TYPE_OPTIONS = {
     "mcu_cpp_01": frozenset(),
-    "mcu_c_01": frozenset({"thresholds", "uart_path"}),
+    "mcu_c_01": frozenset({"thresholds", "uart_path", "reset_reason", "acks_at_s"}),
     "gw_01_lite": frozenset({"uart_path", "uart_commands", "request_rules"}),
     "app_01": frozenset({"requests"}),
 }
@@ -88,7 +98,8 @@ class DeviceConfig:
     local_rules: dict[str, int] = field(default_factory=dict)
     initial_mode: str | None = None
     options: dict[str, Any] = field(default_factory=dict)
-    """型ごとの設定（thresholds、uart_path、uart_commands、request_rules、requests）。"""
+    """型ごとの設定（thresholds、uart_path、reset_reason、acks_at_s、uart_commands、request_rules、
+    requests）。"""
 
 
 @dataclass(frozen=True)

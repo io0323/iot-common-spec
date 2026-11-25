@@ -1,0 +1,24 @@
+{
+  "name": "ack_get_diag_done",
+  "order": 31,
+  "direction": "01->03",
+  "description": "GET_DIAG の ACK done（DIAG の後）：内部の操作なので cmd/ack にせず not_converted",
+  "frame": {
+    "type": "ACK",
+    "type_code": 17,
+    "seq": 2,
+    "cmd_ref": 7,
+    "status": 1,
+    "reason": 0,
+    "limited": 0,
+    "applied": 0
+  },
+  "hex": "03 11 02 03 07 07 02 01 01 01 01 03 fc f3 00",
+  "received_at": "2026-11-20T06:00:15.500Z",
+  "expected": {
+    "envelope": null,
+    "discarded": "not_converted",
+    "request_state": false,
+    "dropped_telemetry_total": 3
+  }
+}

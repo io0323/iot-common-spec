@@ -20,8 +20,10 @@ from iotspec.sim.devices.app_01 import App01
 from iotspec.sim.devices.gw_01_lite import Gw01Lite
 from iotspec.sim.devices.mcu_c_01 import (
     CRITICAL,
+    INIT,
     NORMAL,
     SENSOR_FAULT,
+    TRANSITION_EVENTS,
     WARNING,
     McuC01,
     Thresholds,
@@ -30,9 +32,11 @@ from iotspec.sim.scenario import ScenarioError, load_scenario, parse_scenario
 from iotspec.sim.serial import DevicePort, OwnPty
 from iotspec.sim.signals import SignalSet
 from iotspec.sim.simulation import Simulation
+from iotspec.uart import cobs
 from iotspec.uart.frames import (
     Ack,
     Cmd,
+    Diag,
     Event,
     FrameReader,
     Heartbeat,
@@ -40,6 +44,7 @@ from iotspec.uart.frames import (
     Telemetry,
     encode_frame,
 )
+from iotspec.uart.mapping import EVENT_CODE, REASON, RESET_REASON, SEVERITY
 
 T0 = datetime(2026, 11, 20, 6, 0, 0, tzinfo=UTC)
 MCU_PROFILE = load_profile(c.DEVICE_MCU_C_01)
@@ -100,29 +105,290 @@ def test_mcu_tick_sends_telemetry_heartbeat_and_periodic_state() -> None:
     assert seqs == list(range(len(seqs)))
 
 
-def test_mcu_state_changes_with_thresholds_and_events() -> None:
-    th = Thresholds()
-    mcu, clock, signal = _mcu(temp=th.warn_c100 / 100 - 5)
-    mcu.start()
-    seen: list[int] = []
-    for temp in (
-        25.0,
-        th.warn_c100 / 100,
-        th.crit_c100 / 100,
-        (th.warn_c100 - th.hyst_c100 - 1) / 100,
-    ):
-        signal.value = temp
+def _tick(mcu: McuC01, clock: VirtualClock, n: int = 1) -> None:
+    for _ in range(n):
         clock.advance(1)
-        mcu.feed(encode_frame(Heartbeat(0, 0)))
+        mcu.feed(encode_frame(Heartbeat(0, 0)))  # 上位は生きている
         mcu.tick()
-        seen.append(mcu.state)
-    assert seen == [NORMAL, WARNING, CRITICAL, NORMAL]
-    changed = [f for f in mcu.sent if isinstance(f, Event) and f.code == 2]
-    assert [(e.from_state, e.to_state) for e in changed][-3:] == [
-        (NORMAL, WARNING),
-        (WARNING, CRITICAL),
-        (CRITICAL, NORMAL),
+
+
+_TEMP_OF = {INIT: 25.0, NORMAL: 25.0, WARNING: 50.0, CRITICAL: 70.0, SENSOR_FAULT: 25.0}
+"""既定のしきい値（45／60／3℃）で各状態に分類される温度。"""
+
+
+class _Rig:
+    """状態を作り、温度・故障・承認を差し替えて遷移させる。"""
+
+    def __init__(self, state: int, **kwargs: Any) -> None:
+        self.mcu, self.clock, self.signal = _mcu(_TEMP_OF[state], **kwargs)
+        self.faulty = state == SENSOR_FAULT
+        self.mcu._temp_faulty = lambda: self.faulty  # type: ignore[method-assign]
+        if state != INIT:
+            self.mcu.start()
+            assert self.mcu.state == state
+
+    def tick(self, n: int = 1) -> None:
+        _tick(self.mcu, self.clock, n)
+
+    def events_during(self, action: Any) -> list[Event]:
+        before = len(self.mcu.sent)
+        action()
+        return [f for f in self.mcu.sent[before:] if isinstance(f, Event)]
+
+
+def _make_transition(rig: _Rig, to: int) -> None:
+    """rig.mcu を今の状態から to へ遷移させる（作品01の詳細設計 第4章の条件どおり）。"""
+    frm = rig.mcu.state
+    if frm == INIT:
+        rig.signal.value = _TEMP_OF[to]
+        rig.faulty = to == SENSOR_FAULT
+        rig.mcu.start()
+    elif to == SENSOR_FAULT:
+        rig.faulty = True
+        rig.tick()
+    elif frm == SENSOR_FAULT:
+        rig.faulty = False
+        rig.signal.value = _TEMP_OF[to]
+        rig.tick()  # 正常なサンプルが1秒続くまでは承認しても戻らない
+        rig.mcu.press_ack()
+        rig.tick()
+    elif frm == CRITICAL:
+        rig.signal.value = 50.0 if to == WARNING else 30.0  # crit−hyst 未満で承認
+        rig.mcu.press_ack()
+        rig.tick()
+    else:
+        rig.signal.value = {NORMAL: 30.0, WARNING: 50.0, CRITICAL: 70.0}[to]
+        rig.tick(2)  # 1秒継続で確定
+
+
+@pytest.mark.parametrize(
+    ("frm", "to"), sorted(TRANSITION_EVENTS), ids=lambda s: MCU_PROFILE.state_name(s)
+)
+def test_mcu_sends_one_event_per_transition_from_the_table(frm: int, to: int) -> None:
+    """v0.2.2 #41：表の全行。1回の遷移で EVENT は1件、from・to は遷移の前後の状態番号。"""
+    rig = _Rig(frm)
+    events = rig.events_during(lambda: _make_transition(rig, to))
+    if frm == INIT:
+        events = events[1:]  # STATE → BOOT の後
+    assert rig.mcu.state == to
+    code, severity = TRANSITION_EVENTS[(frm, to)]
+    assert [(e.code, e.severity, e.from_state, e.to_state) for e in events] == [
+        (EVENT_CODE.to_uart(code), SEVERITY.to_uart(severity), frm, to)
     ]
+
+
+def test_transition_table_matches_spec() -> None:
+    """spec.md 第7章「状態遷移と EVENT（v0.2.2）」の表と同じ（作品01の基本設計 第8章）。"""
+    by_code: dict[str, set[tuple[int, int]]] = {}
+    for key, (code, _) in TRANSITION_EVENTS.items():
+        by_code.setdefault(code, set()).add(key)
+    assert by_code["THRESHOLD_EXCEEDED"] == {
+        (NORMAL, WARNING),
+        (NORMAL, CRITICAL),
+        (WARNING, CRITICAL),
+    }
+    assert by_code["THRESHOLD_CLEARED"] == {
+        (WARNING, NORMAL),
+        (CRITICAL, WARNING),
+        (CRITICAL, NORMAL),
+    }
+    assert by_code["SENSOR_FAULT"] == {(s, SENSOR_FAULT) for s in (INIT, NORMAL, WARNING, CRITICAL)}
+    assert by_code["SENSOR_RECOVERED"] == {(SENSOR_FAULT, s) for s in (NORMAL, WARNING, CRITICAL)}
+    assert by_code["STATE_CHANGED"] == {(INIT, s) for s in (NORMAL, WARNING, CRITICAL)}
+    assert TRANSITION_EVENTS[(NORMAL, WARNING)][1] == "warning"
+    assert {TRANSITION_EVENTS[k][1] for k in by_code["THRESHOLD_CLEARED"]} == {"info"}
+
+
+def test_mcu_thresholds_hysteresis_and_approval() -> None:
+    rig = _Rig(NORMAL)
+    assert Thresholds() == Thresholds(4500, 6000, 300)
+    rig.signal.value = 46.0
+    rig.tick()
+    assert rig.mcu.state == NORMAL  # 1秒続くまでは確定しない
+    rig.tick()
+    assert rig.mcu.state == WARNING
+    rig.signal.value = 43.0  # warn−hyst（42℃）以上なので戻らない
+    rig.tick(3)
+    assert rig.mcu.state == WARNING
+    rig.signal.value = 70.0
+    rig.tick(2)
+    assert rig.mcu.state == CRITICAL
+    rig.signal.value = 30.0
+    rig.tick(5)
+    assert rig.mcu.state == CRITICAL  # 温度が下がっても承認がなければ戻らない
+    rig.signal.value = 58.0  # crit−hyst（57℃）以上での承認は無効で、消費される
+    rig.mcu.press_ack()
+    rig.tick()
+    rig.signal.value = 30.0
+    rig.tick()
+    assert rig.mcu.state == CRITICAL
+    rig.mcu.press_ack()
+    rig.tick()
+    assert rig.mcu.state == NORMAL
+
+
+def test_mcu_fan_floor_limited_and_interlock_events() -> None:
+    rig = _Rig(WARNING)
+    assert rig.mcu.fan_pm() == 700  # 下限
+    sent = len(rig.mcu.sent)
+    rig.mcu.feed(encode_frame(Cmd(0, 1, c.UART_OP_SET_FAN_OVERRIDE, 60, (400,))))
+    out = rig.mcu.sent[sent:]
+    assert isinstance(out[0], Ack) and (out[0].status, out[0].limited, out[0].applied) == (
+        1,
+        1,
+        700,
+    )
+    assert isinstance(out[1], Event) and (out[1].code, out[1].severity) == (9, 1)
+    assert out[1].from_state == out[1].to_state == WARNING
+    # 下限を超える指定は丸めない。引き上げをやめたので INTERLOCK_RELEASED
+    events = rig.events_during(
+        lambda: rig.mcu.feed(encode_frame(Cmd(1, 2, c.UART_OP_SET_FAN_OVERRIDE, 60, (800,))))
+    )
+    assert [(e.code, e.severity, e.from_state, e.to_state) for e in events] == [
+        (10, 0, WARNING, WARNING)
+    ]
+    ack = [f for f in rig.mcu.sent if isinstance(f, Ack)][-1]
+    assert (ack.limited, ack.applied) == (0, 800)
+
+
+def test_mcu_interlock_follows_state_changes_after_the_transition_event() -> None:
+    rig = _Rig(NORMAL)
+    rig.mcu.feed(encode_frame(Cmd(0, 1, c.UART_OP_SET_FAN_OVERRIDE, 600, (300,))))
+    assert rig.mcu.fan_pm() == 300 and not rig.mcu.interlocked
+    rig.signal.value = 50.0
+    events = rig.events_during(lambda: rig.tick(2))
+    assert [(e.code, e.from_state, e.to_state) for e in events] == [
+        (3, NORMAL, WARNING),  # 遷移の EVENT は1件
+        (9, WARNING, WARNING),  # そのあと、下限での引き上げ
+    ]
+    rig.signal.value = 30.0
+    events = rig.events_during(lambda: rig.tick(2))
+    assert [(e.code, e.from_state, e.to_state) for e in events] == [
+        (4, WARNING, NORMAL),
+        (10, NORMAL, NORMAL),
+    ]
+    # リースが切れたときも戻す
+    rig.signal.value = 50.0
+    rig.tick(2)
+    assert rig.mcu.interlocked
+    events = rig.events_during(lambda: rig.tick(600))
+    assert (10, WARNING, WARNING) in [(e.code, e.from_state, e.to_state) for e in events]
+
+
+def test_mcu_auto_fan_without_override() -> None:
+    rig = _Rig(NORMAL)
+    for temp, fan in ((30.0, 0), (35.0, 0), (40.0, 200), (44.99, 399)):
+        rig.signal.value = temp
+        rig.tick()
+        assert rig.mcu.fan_pm() == fan, temp
+
+
+@pytest.mark.parametrize(
+    ("ttl_s", "accepted"), [(0, False), (1, True), (600, True), (601, False), (0xFFFF, False)]
+)
+def test_mcu_ttl_s_range(ttl_s: int, accepted: bool) -> None:
+    """v0.2.2 #40：SET_FAN_OVERRIDE の ttl_s は 1〜600、範囲外は rejected（invalid_arg）。"""
+    mcu, _, _ = _mcu()
+    mcu.start()
+    mcu.feed(encode_frame(Cmd(0, 1, c.UART_OP_SET_FAN_OVERRIDE, ttl_s, (500,))))
+    (ack,) = [f for f in _frames(mcu.drain_tx()) if isinstance(f, Ack)]
+    assert (ack.status, ack.reason) == ((1, 0) if accepted else (2, 2))
+
+
+def test_mcu_never_returns_expired() -> None:
+    mcu, clock, _ = _mcu()
+    mcu.start()
+    ref = 0
+    for op, ttl_s, args in [
+        (c.UART_OP_SET_FAN_OVERRIDE, 1, (500,)),
+        (c.UART_OP_SET_FAN_OVERRIDE, 0, (500,)),
+        (c.UART_OP_SET_FAN_OVERRIDE, 600, (1001,)),
+        (c.UART_OP_CLEAR_OVERRIDE, 0, ()),
+        (c.UART_OP_SET_THRESHOLD, 0, (4500, 6000, 300)),
+        (c.UART_OP_GET_STATUS, 0, ()),
+        (c.UART_OP_GET_DIAG, 0, ()),
+        (0x7F, 0, ()),
+    ]:
+        ref += 1
+        mcu.feed(encode_frame(Cmd(ref, ref, op, ttl_s, args)))
+        clock.advance(2)
+        mcu.tick()
+    acks = [f for f in mcu.sent if isinstance(f, Ack)]
+    assert len(acks) == ref
+    assert REASON.to_uart("expired") not in {a.reason for a in acks}
+
+
+def test_mcu_set_threshold_rules() -> None:
+    """作品01の設計 第8章：CRITICAL・SENSOR_FAULT 中は unsafe、範囲外は invalid_arg。"""
+    rig = _Rig(NORMAL)
+    cases = [
+        ((4500, 6000, 300), (1, 0)),
+        ((-2000, 8000, 50), (1, 0)),
+        ((-2001, 6000, 300), (2, 2)),
+        ((4500, 8001, 300), (2, 2)),
+        ((6000, 6000, 300), (2, 2)),
+        ((4500, 6000, 49), (2, 2)),
+        ((4500, 6000, 1001), (2, 2)),
+        ((5800, 6000, 300), (2, 2)),  # crit−warn < hyst
+    ]
+    for ref, (args, expected) in enumerate(cases, start=1):
+        rig.mcu.feed(encode_frame(Cmd(ref, ref, c.UART_OP_SET_THRESHOLD, 0, args)))
+        ack = [f for f in rig.mcu.sent if isinstance(f, Ack)][-1]
+        assert (ack.status, ack.reason) == expected, args
+    for state in (CRITICAL, SENSOR_FAULT):
+        rig = _Rig(state)
+        rig.mcu.feed(encode_frame(Cmd(0, 99, c.UART_OP_SET_THRESHOLD, 0, (4500, 6000, 300))))
+        ack = [f for f in rig.mcu.sent if isinstance(f, Ack)][-1]
+        assert (ack.status, ack.reason) == (2, 1)  # unsafe
+
+
+def test_mcu_get_diag_sends_diag_then_ack_and_resends_on_duplicate() -> None:
+    mcu, _, _ = _mcu(reset_reason="watchdog", reset_count=3)
+    mcu.start()
+    mcu.drain_tx()
+    mcu.feed(encode_frame(Cmd(0, 7, c.UART_OP_GET_DIAG, 0)))
+    frames = _frames(mcu.drain_tx())
+    assert [type(f).__name__ for f in frames] == ["Diag", "Ack"]
+    diag, ack = frames
+    assert isinstance(diag, Diag) and isinstance(ack, Ack)
+    assert (diag.reset_reason, diag.reset_count) == (3, 3)
+    assert (ack.cmd_ref, ack.status, ack.reason) == (7, 1, 0)
+    mcu.feed(encode_frame(Cmd(1, 7, c.UART_OP_GET_DIAG, 0)))
+    again = _frames(mcu.drain_tx())
+    assert [type(f).__name__ for f in again] == ["Diag", "Ack"]
+    assert isinstance(again[0], Diag) and again[0].seq == diag.seq + 1
+
+
+def test_mcu_diag_counters_and_saturation() -> None:
+    mcu, _, _ = _mcu()
+    good = encode_frame(Heartbeat(0, 0))
+    raw = bytearray(cobs.decode(good[:-1]))
+    raw[-1] ^= 0xFF
+    mcu.feed(cobs.encode(bytes(raw)) + b"\x00")  # CRC 不一致
+    mcu.feed(b"\x05\x00")  # COBS 不正
+    mcu.feed(encode_frame(Telemetry(0, 0, 0, 0, 0, 0)))  # 受け付けない種別
+    diag = mcu.diag_frame()
+    assert (diag.rx_crc_errors, diag.rx_frame_errors) == (1, 2)
+    mcu.stats["discarded:crc_mismatch"] = 70_000
+    mcu.stats["unexpected_frame"] = 70_000
+    diag = mcu.diag_frame()
+    assert diag.rx_crc_errors == diag.rx_frame_errors == c.UART_DIAG_U16_SATURATED
+
+
+@pytest.mark.parametrize("reason", list(c.UART_RESET_REASONS.values()))
+def test_mcu_boot_carries_reset_reason(reason: str) -> None:
+    """v0.2.2 #38：BOOT の from は reset_reason、to は 0。"""
+    mcu, _, _ = _mcu(reset_reason=reason)
+    mcu.start()
+    boot = next(f for f in mcu.sent if isinstance(f, Event))
+    assert (boot.code, boot.from_state, boot.to_state) == (1, RESET_REASON.to_uart(reason), 0)
+
+
+def test_mcu_default_reset_reason_is_power_on() -> None:
+    mcu, _, _ = _mcu()
+    mcu.start()
+    boot = next(f for f in mcu.sent if isinstance(f, Event))
+    assert boot.from_state == RESET_REASON.to_uart("power_on")
 
 
 def test_mcu_ack_and_duplicate_cmd_ref() -> None:
@@ -191,6 +457,7 @@ def test_mcu_sensor_fault_and_corrupt_frames() -> None:
                     "device_id": "mcu-c-01",
                     "type": "mcu_c_01",
                     "signals": {"temp_board": {"kind": "constant", "value": 25}},
+                    "acks_at_s": [6],  # 故障が終わって正常なサンプルが1秒続いたあとの承認
                 }
             ],
             "faults": [
@@ -507,3 +774,68 @@ def test_gw_turns_request_for_uart_device_into_cmd_and_reports_result() -> None:
             app.handle_message(out.topic, out.payload())
     assert state.status == "done"
     assert state.acks[0]["cmd_id"] == state.acks[-1]["cmd_id"]
+
+
+def test_gw_does_not_send_expired_cmd_and_rejects_request_with_expired() -> None:
+    """v0.2.2 #40：expires_at を過ぎた指令は UART に送らず、mcu-c-01 名義の cmd/ack を作らない。
+    要求元には request/ack（rejected、reason expired）で伝える。"""
+    gw, clock = _gw()
+    app = App01(load_profile(c.DEVICE_APP_01), clock, site=c.DEFAULT_SITE)
+    state = app.request(
+        {
+            "kind": "manual",
+            "target": c.DEVICE_MCU_C_01,
+            "op": "set_actuator",
+            "args": {"id": "fan_main", "level": 450},
+        }
+    )
+    (sent,) = [o for o in app.drain() if o.kind == c.KIND_REQUEST]
+    gw.handle_message(sent.topic, sent.payload())
+    for out in gw.drain():
+        app.handle_message(out.topic, out.payload())
+    assert state.status == "accepted"
+    (record,) = gw.cmds.values()
+    record.payload["expires_at"] = format_ts(clock.now())  # ちょうどで期限切れ
+    gw.feed_uart(encode_frame(State(0, 0x0102, 1, 1000)))
+    clock.advance(1)
+    gw.tick()
+    assert _cmds(gw.drain_uart()) == []
+    assert record.expired and gw.stats["uart_cmd_expired"] == 1
+    outs = gw.drain()
+    assert not [o for o in outs if o.kind == c.KIND_CMD_ACK]
+    for out in outs:
+        if out.kind == c.KIND_REQUEST_ACK:
+            app.handle_message(out.topic, out.payload())
+    assert (state.status, state.reason) == ("rejected", "expired")
+    assert all(validate(o.message) == [] for o in outs)
+
+
+def test_gw_sends_unexpired_cmd() -> None:
+    gw, clock = _gw()
+    gw.feed_uart(encode_frame(State(0, 0x0102, 1, 1000)))
+    expires = format_ts(clock.now() + timedelta(seconds=5))
+    gw.submit_uart({"op": "release", "args": {"id": "fan_main"}, "expires_at": expires})
+    clock.advance(1)
+    gw.tick()
+    assert [cmd.op for cmd in _cmds(gw.drain_uart())] == [c.UART_OP_CLEAR_OVERRIDE]
+
+
+def test_gw_get_diag_keeps_history_and_publishes_nothing() -> None:
+    """v0.2.2 #37：DIAG と GET_DIAG の ACK は MQTT に出さず、DIAG は履歴に残す。"""
+    sim = Simulation(load_scenario("uart_link"), speed=0)
+    sim.schedule()
+    gw, mcu = sim.gw, sim.mcu_c
+    assert gw is not None and mcu is not None
+    sim.runtime.run_until(sim.scenario.start + timedelta(seconds=2), after_step=sim.pump_uart)
+    gw.drain()
+    record = gw.submit_internal(c.UART_OP_GET_DIAG)
+    sim.runtime.run_until(sim.scenario.start + timedelta(seconds=5), after_step=sim.pump_uart)
+    assert record.ack is not None and record.ack["status"] == "done"
+    assert record.ack["op"] == "GET_DIAG"
+    (diag,) = gw.diag_history
+    assert diag["boot_id"] == f"{mcu.boot_id:08x}"
+    assert diag["reset_reason"] == RESET_REASON.to_uart("power_on")
+    assert gw.bridge is not None and gw.bridge.discards["not_converted"] == 2
+    acks = [o.message["payload"] for o in gw.drain() if o.kind == c.KIND_CMD_ACK]
+    assert record.cmd_id not in {a["cmd_id"] for a in acks}  # type: ignore[index]
+    assert not [d for d in gw.diag_history if "cmd_id" in d]
