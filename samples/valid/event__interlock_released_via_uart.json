@@ -1,0 +1,20 @@
+{
+  "schema": "iot.v1.event",
+  "msg_id": "01JDA0000000000000000V0004",
+  "device_id": "mcu-c-01",
+  "seq": 2,
+  "boot_id": "00000002",
+  "ts": "2026-11-26T06:00:12.345Z",
+  "ts_source": "gateway",
+  "uptime_ms": 2500,
+  "payload": {
+    "code": "INTERLOCK_RELEASED",
+    "severity": "info",
+    "channel": "temp_board",
+    "value": 41.8,
+    "detail": {
+      "from_state": "NORMAL",
+      "to_state": "NORMAL"
+    }
+  }
+}

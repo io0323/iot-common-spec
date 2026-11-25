@@ -1,6 +1,6 @@
-# 共通仕様 v0.2（iot-common-spec）：作品01〜04 の通信・データ仕様
+# 共通仕様 v0.2（iot-common-spec v0.2.2）：作品01〜04 の通信・データ仕様
 
-2026-11-20 · @io
+2026-11-20 · @io（v0.2.2：2026-11-26）
 
 ## 1. 目的・適用範囲・版の方針
 
@@ -13,6 +13,7 @@
 ### 版の方針
 
 - 本書の版（v0.2）と、トピックに含めるメジャー版（`v1`）は別物。v0.2は項目の追加だけなのでトピックは `v1` のまま
+- 実体のリリースは v0.2.x で数える。現在は **v0.2.2**（v0.2.1 に UART の DIAG 種別、BOOT のリセット要因、INTERLOCK のコード、ttl_s の範囲、状態遷移と EVENT の表を追加。いずれも項目の追加で、トピックは `v1` のまま。CHANGELOG.md）
 - 受信側は知らない項目を無視する（前方互換）。必須項目の削除や意味の変更をするときだけトピックを `v2` に上げる
 - 各作品はREADMEに対応する仕様の版を書き、`iot-common-spec` をタグ指定で取り込む
 - 変更は `iot-common-spec` へのPull Requestで行い、影響する作品を説明に書く
@@ -228,11 +229,11 @@ JSON上の値は浮動小数点数で、上記の単位そのものを表す（�
 
 | コード | 重大度 | 発行元 | 意味 | 対になるコード |
 |---|---|---|---|---|
-| `BOOT` | info | 全て | 起動。`detail.reset_reason` に再起動要因 | — |
+| `BOOT` | info | 全て | 起動。`detail.reset_reason` に再起動要因（unknown／power_on／pin／watchdog／software／brownout／low_power。v0.2.2で列挙） | — |
 | `STATE_CHANGED` | info〜critical | 01、02 | デバイス内の状態遷移。重大度は遷移先に従う | — |
 | `THRESHOLD_EXCEEDED` | warning／critical | 01、02、03 | しきい値超過 | `THRESHOLD_CLEARED` |
 | `SENSOR_FAULT` | critical | 01、02 | センサー故障 | `SENSOR_RECOVERED` |
-| `INTERLOCK_ACTIVE` | warning | 01、02 | 安全制限が動作（出力を丸めた、強制停止した） | `INTERLOCK_RELEASED` |
+| `INTERLOCK_ACTIVE` | warning | 01、02 | 安全制限が動作（出力を丸めた、強制停止した）。01はUARTのEVENT code 9・10で送る（v0.2.2） | `INTERLOCK_RELEASED` |
 | `MODE_CHANGED` | info | 02 | 自動／手動／省電力の切替 | — |
 | `UPSTREAM_LOST` | warning | 01、02 | 上位（03）との接続断。自律制御で継続中 | `UPSTREAM_RESTORED` |
 | `DEVICE_OFFLINE` | warning | 03 | デバイスの切断を確定 | `DEVICE_ONLINE` |
@@ -266,13 +267,14 @@ JSON上の値は浮動小数点数で、上記の単位そのものを表す（�
 | EVENT | 0x02 | 01→03 | `uptime_ms:u32, code:u8, severity:u8, from:u8, to:u8, temp_c100:i16` | `event`（コードは下表で変換） |
 | HEARTBEAT | 0x03 | 双方向 | `uptime_ms:u32` | なし（生存監視のみ） |
 | STATE | 0x04 | 01→03 | `fw_version:u16, boot_id:u32, period_ms:u16` | `state`（03が `mcu-c-01` 名義でretain発行） |
+| DIAG | 0x05 | 01→03 | `uptime_ms:u32, reset_reason:u8, reset_count:u16, rx_crc_errors:u16, rx_frame_errors:u16, max_loop_us:u16, overruns:u16`（15バイト。v0.2.2で追加） | なし（03が履歴に残す） |
 | CMD | 0x10 | 03→01 | `cmd_ref:u16, op:u8, ttl_s:u16, args:可変長` | `cmd` |
 | ACK | 0x11 | 01→03 | `cmd_ref:u16, status:u8, reason:u8, limited:u8, applied:u16` | `cmd/ack` |
 
 - HEARTBEATは双方向1秒周期。3秒途絶えたら相手を切断とみなす。作品03はUARTデバイスのHEARTBEATが3秒途絶えたら、そのデバイス名義のofflineのstateを `bridged_by` 付き・retainで発行する（`seq` は進めない。v0.2.1で明記）。作品01は10秒途絶えたら手動指定を解除し `UPSTREAM_LOST` を送る
 - `cmd_ref` は作品03が採番する16ビットの参照番号。作品03は `cmd_ref` ⇔ `cmd_id`（ULID）の対応表を持ち、再送では同じ `cmd_ref` を使う
-- `ttl_s` はリース秒数。絶対時刻を持たない作品01は受信時点から数える
-- `op`：0x01 SET_FAN_OVERRIDE、0x02 CLEAR_OVERRIDE、0x03 SET_THRESHOLD、0x10 GET_STATUS、0x11 GET_DIAG。汎用指令との対応は作品03の `devices.yaml` で定義する
+- `ttl_s` はリース秒数。絶対時刻を持たない作品01は受信時点から数える。SET_FAN_OVERRIDE の `ttl_s` は1〜600で、範囲外は rejected（invalid_arg）（v0.2.2）
+- `op`：0x01 SET_FAN_OVERRIDE、0x02 CLEAR_OVERRIDE、0x03 SET_THRESHOLD、0x10 GET_STATUS、0x11 GET_DIAG。汎用指令との対応は作品03の `devices.yaml` で定義する。GET_DIAG は作品03の内部の操作で、汎用指令との対応はない（v0.2.2）
 - 数値の変換：`temp_c100` ÷ 100 = `degC`、`fan_pm` はそのまま `level_pm`。`uptime_ms` は作品03が受信時刻から `ts` を求めるのに使う（`ts_source: gateway`）
 
 ### 変換で失わない情報
@@ -297,6 +299,32 @@ JSON上の値は浮動小数点数で、上記の単位そのものを表す（�
 
 STATEが破損で失われた場合に備え、作品03は `uptime_ms` が減ったら再起動とみなしてGET_STATUSでSTATEを求める。新しいSTATEを受けるまでのTELEMETRYは変換せずに破棄し、件数を記録する（古い `boot_id` を付けたまま送らないため）。
 
+### 変換の決め事（v0.2.2）
+
+- **DIAG**（open-questions #37）：作品01は GET_DIAG に DIAG → ACK(done) の順で返す。`rx_frame_errors` はCOBS・長さ・種別・受信あふれで捨てた件数の合計。u16の項目はすべて `0xFFFF` で飽和させ、一周させない。作品03はDIAGをMQTTに変換せず（破棄理由 `not_converted` で数える）、受信時刻と `boot_id` を付けて履歴に残す。STATE待ちの間のDIAGは他の種別と同じく破棄する（`awaiting_state`）。ペイロード長が15バイトでないDIAGは、他の種別と同じ理由（`payload_size`）で破棄する
+- **GET_DIAGのACK**（#37）：GET_DIAG は作品03の内部の操作で、汎用指令との対応はない。作品03はその `cmd_ref` を覚えておき、ACKを `cmd/ack` に変換しない（`not_converted`）
+- **BOOTのリセット要因**（#38）：UARTのEVENT code 1（BOOT）に限り、`from` を reset_reason（下表）、`to` を 0 とする。MQTTのeventでは、BOOTのときに限り `detail` を `{"reset_reason": "<文字列>"}` だけにする（`from_state`・`to_state` は付けない）。`to` が0でないBOOTと、表にないreset_reasonは変換できない値として破棄する
+- **INTERLOCK**（#39）：EVENT code 9 INTERLOCK_ACTIVE（warning）、10 INTERLOCK_RELEASED（info）。`from`・`to` はその時点の状態番号（同じ値）で、MQTTでは他のEVENTと同じく `detail.from_state`・`detail.to_state` に入れる。作品01は、状態によるファンの下限で手動指定の値を引き上げ始めたときに ACTIVE、引き上げをやめたとき（指定の解除・期限切れ・上位断、状態が下がった、下限以上の指定に置き換わった）に RELEASED を送る
+- **ttl_sとexpired**（#40）：作品01は `expired` を返さない（`reason` の値としては残す）。SET_FAN_OVERRIDE の `ttl_s` は1〜600で、範囲外は rejected（invalid_arg）。`expires_at` を過ぎた指令は、作品03がUARTに送らずに終える。このとき作品03は `mcu-c-01` 名義の `cmd/ack` を作らない（`cmd/ack` の `seq` はUARTのACKから作るため）。結果は要求元への `request/ack`（rejected、reason `expired`）と履歴で伝える。期限の検査は最初の送信の前に行う（再送の前には行わない。#43 の仮実装）
+
+### 状態遷移とEVENT（v0.2.2）
+
+1回の状態遷移につき、作品01が送るEVENTは1件（open-questions #41）。`from`・`to` には遷移の前後の状態番号を入れる。状態番号はプロファイル（0 INIT、1 NORMAL、2 WARNING、3 CRITICAL、4 SENSOR_FAULT）。
+
+| 遷移 | code | severity |
+|---|---|---|
+| NORMAL → WARNING | 3 THRESHOLD_EXCEEDED | warning |
+| NORMAL・WARNING → CRITICAL | 3 THRESHOLD_EXCEEDED | critical |
+| WARNING → NORMAL、CRITICAL → WARNING・NORMAL（承認後） | 4 THRESHOLD_CLEARED | info |
+| 任意の状態 → SENSOR_FAULT | 5 SENSOR_FAULT | critical |
+| SENSOR_FAULT → 他の状態（承認後） | 6 SENSOR_RECOVERED | info |
+| INIT → NORMAL・WARNING・CRITICAL | 2 STATE_CHANGED | 遷移先に従う（NORMAL は info、WARNING は warning、CRITICAL は critical） |
+| 起動（INIT を抜けるとき、STATE の直後） | 1 BOOT | info（from は reset_reason、to は 0） |
+| 上位断・復帰 | 7 UPSTREAM_LOST／8 UPSTREAM_RESTORED | warning／info（from・to は現在の状態） |
+| 下限による手動指定の引き上げの開始・終了 | 9 INTERLOCK_ACTIVE／10 INTERLOCK_RELEASED | warning／info（from・to は現在の状態） |
+
+BOOT・UPSTREAM・INTERLOCK は状態遷移ではないので、上の「1件」に数えない。状態遷移と同時に下限での引き上げが始まる・終わるときは、遷移のEVENTの後にINTERLOCKを送る（from・to は遷移後の状態。送る契機と順序は open-questions #42 の仮実装）。
+
 ### 値の対応表
 
 | UART上の値 | 共通仕様上の値 |
@@ -304,7 +332,8 @@ STATEが破損で失われた場合に備え、作品03は `uptime_ms` が減っ
 | quality 0／1／2 | good／stale／fault |
 | status 0／1／2／3 | accepted／done／rejected／failed |
 | reason 0／1／2／3／4／5 | null／unsafe／invalid_arg／unknown_op／expired／internal |
-| EVENT code 1／2／3／4／5／6／7／8 | BOOT／STATE_CHANGED／THRESHOLD_EXCEEDED／THRESHOLD_CLEARED／SENSOR_FAULT／SENSOR_RECOVERED／UPSTREAM_LOST／UPSTREAM_RESTORED（8はv0.2.1で追加。作品01は上位のHEARTBEATが戻ったら送る） |
+| EVENT code 1／2／3／4／5／6／7／8／9／10 | BOOT／STATE_CHANGED／THRESHOLD_EXCEEDED／THRESHOLD_CLEARED／SENSOR_FAULT／SENSOR_RECOVERED／UPSTREAM_LOST／UPSTREAM_RESTORED／INTERLOCK_ACTIVE／INTERLOCK_RELEASED（8はv0.2.1、9・10はv0.2.2で追加） |
+| reset_reason 0／1／2／3／4／5／6 | unknown／power_on／pin／watchdog／software／brownout／low_power（BOOTの `from` とDIAGの `reset_reason`。v0.2.2で追加） |
 | severity 0／1／2 | info／warning／critical |
 
 ゴールデンフレーム（符号化済みの16進列と、対応するJSON）を `uart/golden/` に置き、作品01の符号化と作品03の復号の両方をこれでテストする。

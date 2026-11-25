@@ -41,7 +41,33 @@
         "detail": {
           "type": "object"
         }
-      }
+      },
+      "allOf": [
+        {
+          "description": "BOOT の detail.reset_reason は再起動要因の列挙（v0.2.2 #38）。省略してよい（v0.2.1 の電文は from_state・to_state を持つ）",
+          "if": {
+            "required": [
+              "code"
+            ],
+            "properties": {
+              "code": {
+                "const": "BOOT"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "detail": {
+                "properties": {
+                  "reset_reason": {
+                    "$ref": "common.schema.json#/$defs/reset_reason"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
     }
   }
 }

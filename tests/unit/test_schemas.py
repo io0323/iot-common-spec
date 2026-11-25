@@ -48,6 +48,8 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "event__bad_severity": ("/payload/severity", "enum"),
     "event__missing_code": ("/payload", "required"),
     "event__detail_not_object": ("/payload/detail", "type"),
+    "event__boot_unknown_reset_reason": ("/payload/detail/reset_reason", "enum"),
+    "event__boot_reset_reason_is_number": ("/payload/detail/reset_reason", "enum"),
     "state__bad_status": ("/payload/status", "enum"),
     "state__bad_bridged_by": ("/payload/bridged_by", "pattern"),
     "state__missing_channels": ("/payload", "required"),

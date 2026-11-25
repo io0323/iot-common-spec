@@ -63,6 +63,18 @@
         "critical"
       ]
     },
+    "reset_reason": {
+      "description": "再起動要因（第6章 BOOT の detail.reset_reason、v0.2.2 #38）。UART の BOOT の from・DIAG の reset_reason の 0〜6 に対応",
+      "enum": [
+        "unknown",
+        "power_on",
+        "pin",
+        "watchdog",
+        "software",
+        "brownout",
+        "low_power"
+      ]
+    },
     "event_code": {
       "description": "イベントコード。列挙せず形式（英大文字・数字・アンダースコア）だけを検査する（第6章）",
       "type": "string",
