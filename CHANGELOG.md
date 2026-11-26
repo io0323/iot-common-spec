@@ -4,8 +4,11 @@
 
 作品03（gw-01）の品質の件数と自己監視を telemetry で公開できるようにしました（作品03 の変更案
 `docs/design/03-common-spec-cr-v0.2.3.md`、[docs/open-questions.md](docs/open-questions.md) #45）。
-**トピックのメジャー版は `v1` のまま**で、変更は単位の列挙への値の追加と、gw-01 のプロファイルのチャネルの追加です。
-v0.2.2 の電文は v0.2.3 の Schema でもすべて通ります。
+あわせて作品03 の Phase 4 で必要になった点、EMERGENCY の解除の承認（#46）、ルールの通知の重大度（#47）、SYSTEM_MODE_CHANGED の重大度と detail（#48）を含めました。
+**トピックのメジャー版は `v1` のまま**で、変更は値の追加と、gw-01 のプロファイルの追加です。
+v0.2.2 の電文は v0.2.3 の Schema でもすべて通ります。ただし RULE_FIRED は `detail.rule_id` が、SYSTEM_MODE_CHANGED は
+`detail.from`・`detail.to` が必須になりました（RULE_FIRED は第6章がもともと `detail.rule_id` としていたもの、
+SYSTEM_MODE_CHANGED は v0.2.2 まで detail の形が決まっていなかったもので、どちらもまだ発行する作品はありません）。
 
 ### 決定（#45）
 
@@ -14,18 +17,52 @@ v0.2.2 の電文は v0.2.3 の Schema でもすべて通ります。
 - gw-01 は2種類を別々の telemetry で発行する（件数は quality good、取得に失敗した自己監視は fault）
 - HOST_RESOURCE_HIGH・NORMAL の detail は `{channel, value, threshold}`
 
+### 決定（#46：EMERGENCY の解除の承認）
+
+- 作品04からの承認は request の `{target: "gw-01", op: "set_mode", args: {mode: "NORMAL"}}`（kind manual）
+- `profiles/gw-01.yaml` に `modes: [NORMAL, ALERT, EMERGENCY]` を追加（profile の Schema の modes に大文字を許した）
+- 作品03は、条件が回復していれば accepted → done（`cmd_id` には承認の処理を表す ULID）を返して NORMAL に戻し、
+  `SYSTEM_MODE_CHANGED` を発行する。回復していなければ rejected（`unsafe`）。NORMAL 以外への set_mode は rejected（`not_permitted`）
+- spec.md 第4章「EMERGENCY の解除の承認（v0.2.3）」と第6章の SYSTEM_MODE_CHANGED
+
+### 決定（#47：ルールの通知の重大度）
+
+- RULE_FIRED の重大度は info〜critical で、ルールの notify の level に従う（notify のないルールは info）。RULE_CLEARED は info のまま
+- RULE_FIRED の detail は `{rule_id, message?}`。event の Schema で RULE_FIRED の `detail.rule_id`（空でない文字列）を必須にした
+
+### 決定（#48：SYSTEM_MODE_CHANGED の重大度と detail）
+
+- 重大度は遷移先で決める：NORMAL は info、ALERT は warning、EMERGENCY は critical
+- detail は `{from, to, reason}`。`from`・`to` は NORMAL・ALERT・EMERGENCY、`reason` は文字列で、ルールによる切替は
+  発火したルールの `rule_id`、承認による解除は `"approved_by_request"` か `"approved_by_gwctl"`
+- event の Schema で SYSTEM_MODE_CHANGED の `detail.from`・`detail.to` を必須・列挙で検査する（`reason` は文字列。
+  重大度の対応は Schema では検査しない）
+
 ### そのほか
 
 - spec.md：第2章（単位表、count は整数）、第3章（gw-01 の telemetry）、第5章（件数の公開とチャネルの意味）、第6章（HOST_RESOURCE の detail）
 - samples：valid に `telemetry__gw_quality_counts`・`telemetry__gw_host_monitor`、invalid に `telemetry__count_negative`・`telemetry__count_fractional`
+- samples（#46・#47）：valid に `request__approve_emergency_release`・`request_ack__approval_done`・`request_ack__approval_rejected_unsafe`・
+  `request_ack__set_mode_emergency_not_permitted`・`event__rule_fired_critical`・`event__rule_fired_info_without_notify`、
+  invalid に `request__set_mode_without_mode`・`event__rule_fired_without_detail`・`event__rule_fired_without_rule_id`・
+  `event__rule_fired_message_not_string`
+- samples（#48）：valid に `event__system_mode_changed_approved`・`event__system_mode_changed_by_rule`、invalid に
+  `event__system_mode_changed_without_detail`・`event__system_mode_changed_without_from`・`event__system_mode_changed_unknown_mode`
+- gw-01 簡易版（#46）：システムのモード（シナリオの `initial_mode`）と、gw-01 宛ての set_mode を承認として扱う振る舞い。
+  シナリオに `emergency_condition_until_s`（その時刻まで条件が回復していない）を追加。シナリオ `emergency_approval` で
+  app-01 の代役から承認を送れる
 - gw-01 簡易版：state の channels をプロファイルから出し、件数（60秒）と自己監視（10秒、決まった値）の telemetry を発行する
 - シナリオ：signals を全チャネル分求めるのは、信号から値を作る代役（mcu_cpp_01・mcu_c_01）だけにした
 - UART・ゴールデンの変更はなし（ゴールデンは1バイトも変わらない）
 
 ### 各作品への影響
 
-- 作品03：gw-01 の telemetry（件数60秒・自己監視10秒）を発行する。gw-01 の state の channels に12チャネルが載る
-- 作品04：単位 `count` と gw-01 の telemetry を取り込んで表示する。HOST_RESOURCE の detail を読む
+- 作品03：gw-01 の telemetry（件数60秒・自己監視10秒）を発行する。gw-01 の state の channels に12チャネルが載る。
+  gw-01 宛ての set_mode NORMAL を EMERGENCY の解除の承認として扱う（#46）。RULE_FIRED の重大度を notify の level にし、
+  detail に rule_id と message を入れる（#47）。SYSTEM_MODE_CHANGED の重大度を遷移先で決め、detail に from・to・reason を入れる（#48）
+- 作品04：単位 `count` と gw-01 の telemetry を取り込んで表示する。HOST_RESOURCE の detail を読む。
+  EMERGENCY の解除の承認を set_mode NORMAL の request で送り、rejected（unsafe・not_permitted）を表示する（#46）。
+  RULE_FIRED を重大度と message で通知する（#47）。SYSTEM_MODE_CHANGED の detail（from・to・reason）を表示する（#48）
 - 作品01・02：なし
 
 ## v0.2.2（2026-11-26）

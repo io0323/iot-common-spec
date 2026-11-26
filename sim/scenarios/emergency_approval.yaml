@@ -1,0 +1,21 @@
+# EMERGENCY の解除の承認（v0.2.3 #46）：app-01 → gw-01 の request（set_mode NORMAL）
+name: emergency_approval
+description: gw-01 簡易版は EMERGENCY で始まり、20秒までは条件が回復していない。app-01 が承認（set_mode NORMAL）を送る
+start: "2026-11-26T09:00:00.000Z"
+speed: 10
+duration_s: 40
+seed: 13
+devices:
+  - device_id: gw-01
+    type: gw_01_lite
+    initial_mode: EMERGENCY
+    emergency_condition_until_s: 20
+  - device_id: app-01
+    type: app_01
+    requests:
+      # 条件が回復する前の承認 → rejected（unsafe）
+      - {at_s: 2, kind: manual, target: gw-01, op: set_mode, args: {mode: NORMAL}}
+      # NORMAL 以外への set_mode → rejected（not_permitted）
+      - {at_s: 4, kind: manual, target: gw-01, op: set_mode, args: {mode: EMERGENCY}}
+      # 条件が回復したあとの承認 → accepted → done、gw-01 は NORMAL に戻る
+      - {at_s: 25, kind: manual, target: gw-01, op: set_mode, args: {mode: NORMAL}}

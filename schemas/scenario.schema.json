@@ -146,6 +146,11 @@
           "items": {
             "$ref": "#/$defs/request"
           }
+        },
+        "emergency_condition_until_s": {
+          "description": "gw_01_lite：開始からこの秒数までは EMERGENCY の条件が回復していない（その間の承認は unsafe で拒否。v0.2.3 #46）。省略時は回復済み",
+          "type": "number",
+          "minimum": 0
         }
       }
     },

@@ -72,6 +72,13 @@ def build_device(
             uart_profile=uart_profile,
             request_rules=config.options.get("request_rules", []),
             faults=faults,
+            initial_mode=config.initial_mode,
+            emergency_condition_until=(
+                None
+                if "emergency_condition_until_s" not in config.options
+                else scenario.start
+                + timedelta(seconds=float(config.options["emergency_condition_until_s"]))
+            ),
         )
     if config.type == "app_01":
         return App01(config.profile, clock, site=scenario.site)

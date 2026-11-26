@@ -73,11 +73,11 @@
       }
     },
     "modes": {
-      "description": "set_mode で取りうる mode の値（v0.2.1 #5）",
+      "description": "set_mode で取りうる mode の値（v0.2.1 #5）。英字で始まり英数字とアンダースコア。gw-01 の NORMAL・ALERT・EMERGENCY のように大文字も使える（v0.2.3 #46）",
       "type": "array",
       "items": {
         "type": "string",
-        "pattern": "^[a-z][a-z0-9_]*$"
+        "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
       },
       "uniqueItems": true,
       "minItems": 1
