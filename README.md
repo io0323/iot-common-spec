@@ -19,7 +19,7 @@ JSON Schema、サンプル電文、UART ゴールデンフレーム、共通シ�
 
 **仕様の正は [docs/spec.md](docs/spec.md) と [schemas/](schemas/) です。**
 spec.md は説明であり、両者が食い違う場合は schemas/ を正とします（spec.md 第1章）。
-仕様に書かれていなかった点の決定は [docs/open-questions.md](docs/open-questions.md) にあります（v0.2.2 で #1〜#44、v0.2.3 で #45〜#47 を確定）。
+仕様に書かれていなかった点の決定は [docs/open-questions.md](docs/open-questions.md) にあります（v0.2.2 で #1〜#44、v0.2.3 で #45〜#48 を確定）。
 
 ## 取り込み方
 

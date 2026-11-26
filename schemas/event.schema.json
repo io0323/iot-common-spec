@@ -101,7 +101,54 @@
               }
             }
           }
+        },
+        {
+          "description": "SYSTEM_MODE_CHANGED の detail は {from, to, reason}（v0.2.3 #48）。from・to は NORMAL・ALERT・EMERGENCY で必須。reason は文字列（ルールの rule_id、approved_by_request、approved_by_gwctl）。重大度は遷移先で決める（NORMAL info・ALERT warning・EMERGENCY critical）が、Schema では検査しない",
+          "if": {
+            "required": [
+              "code"
+            ],
+            "properties": {
+              "code": {
+                "const": "SYSTEM_MODE_CHANGED"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "detail"
+            ],
+            "properties": {
+              "detail": {
+                "type": "object",
+                "required": [
+                  "from",
+                  "to"
+                ],
+                "properties": {
+                  "from": {
+                    "$ref": "#/$defs/system_mode"
+                  },
+                  "to": {
+                    "$ref": "#/$defs/system_mode"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            }
+          }
         }
+      ]
+    },
+    "system_mode": {
+      "description": "作品03（gw-01）のシステムのモード（v0.2.3 #48。profiles/gw-01.yaml の modes）",
+      "enum": [
+        "NORMAL",
+        "ALERT",
+        "EMERGENCY"
       ]
     }
   }

@@ -225,7 +225,7 @@ gw-01（作品03）は、計測値の代わりに次の2種類の telemetry を�
 ```
 
 - `target: "gw-01"`、`op: "set_mode"`、`args.mode: "NORMAL"`、`kind: "manual"` の request を承認とする。gw-01 のとりうる mode は `profiles/gw-01.yaml` の `modes`（NORMAL・ALERT・EMERGENCY）
-- 作品03は、条件が回復していれば accepted → done を返し、NORMAL に戻して `SYSTEM_MODE_CHANGED` を発行する。回復していなければ rejected（reason `unsafe`）を返す
+- 作品03は、条件が回復していれば accepted → done を返し、NORMAL に戻して `SYSTEM_MODE_CHANGED`（severity info、`detail.reason` は `"approved_by_request"`。第6章）を発行する。回復していなければ rejected（reason `unsafe`）を返す
 - NORMAL 以外への set_mode（作品04が EMERGENCY・ALERT に切り替えること）は rejected（reason `not_permitted`）
 - 承認の request は作品03自身が処理するので、デバイスへの cmd にはならない。ただし accepted・done の request/ack には `cmd_id` が必須（#7）なので、作品03は承認の処理を表す ULID を採番して `cmd_id` に入れる
 
@@ -276,7 +276,7 @@ gw-01（作品03）は、計測値の代わりに次の2種類の telemetry を�
 | `MODE_CHANGED` | info | 02 | 自動／手動／省電力の切替 | — |
 | `UPSTREAM_LOST` | warning | 01、02 | 上位（03）との接続断。自律制御で継続中 | `UPSTREAM_RESTORED` |
 | `DEVICE_OFFLINE` | warning | 03 | デバイスの切断を確定 | `DEVICE_ONLINE` |
-| `SYSTEM_MODE_CHANGED` | info〜critical | 03 | NORMAL／ALERT／EMERGENCYの切替。EMERGENCY の解除は、条件の回復と作品04（request の set_mode NORMAL。第4章）または gwctl の承認で行う（v0.2.3） | — |
+| `SYSTEM_MODE_CHANGED` | 遷移先で決める：NORMAL は info、ALERT は warning、EMERGENCY は critical（v0.2.3） | 03 | NORMAL／ALERT／EMERGENCYの切替。`detail` は `{from, to, reason}`（`from`・`to` は NORMAL・ALERT・EMERGENCY。`reason` は文字列で、ルールによる切替は発火したルールの `rule_id`、承認による解除は `"approved_by_request"`（作品04の request）か `"approved_by_gwctl"`）。EMERGENCY の解除は、条件の回復と作品04（request の set_mode NORMAL。第4章）または gwctl の承認で行う（v0.2.3） | — |
 | `RULE_FIRED` | info〜critical | 03 | ルール発火。`detail` は `{rule_id, message?}`。重大度はルールの notify の level（info・warning・critical）に従い、notify のないルールは info（v0.2.3） | `RULE_CLEARED`（info） |
 | `COMMAND_FAILED` | warning | 03 | 指令が失敗・タイムアウト | — |
 | `CLOCK_SKEW` | warning | 03、04 | 時刻ずれを検出（第5章） | — |

@@ -914,6 +914,12 @@ def test_emergency_approval_scenario() -> None:
     assert gw.system_mode == "NORMAL"
     events = [o.message["payload"] for o in out if o.topic.endswith("gw-01/event")]
     assert [(e["code"], e["severity"]) for e in events] == [("SYSTEM_MODE_CHANGED", "info")]
+    # #48：重大度は遷移先（NORMAL は info）、detail は {from, to, reason}
+    assert events[0]["detail"] == {
+        "from": "EMERGENCY",
+        "to": "NORMAL",
+        "reason": "approved_by_request",
+    }
     modes = [o.message["payload"]["mode"] for o in out if o.topic.endswith("gw-01/state")]  # type: ignore[index]
     assert modes == ["EMERGENCY", "NORMAL"]
     for o in out:

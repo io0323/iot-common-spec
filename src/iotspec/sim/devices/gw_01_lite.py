@@ -61,7 +61,9 @@ FW_VERSION: Final = "sim-gw-0.2"
 NORMAL_MODE: Final = "NORMAL"
 """EMERGENCY の解除の承認で戻すモード（v0.2.3 #46）。"""
 _MODE_SEVERITY: Final = {"NORMAL": "info", "ALERT": "warning", "EMERGENCY": "critical"}
-"""SYSTEM_MODE_CHANGED の重大度（遷移先に従う。代役の選択）。"""
+"""SYSTEM_MODE_CHANGED の重大度は遷移先で決める（v0.2.3 #48）。"""
+APPROVED_BY_REQUEST: Final = "approved_by_request"
+"""作品04の request による承認で EMERGENCY を解除したときの detail.reason（#48）。"""
 QUALITY_COUNT_CHANNELS: Final = (
     "mqtt_rejected",
     "mqtt_duplicates",
@@ -358,7 +360,7 @@ class Gw01Lite:
             record.done_at = now
             record.result = "approve"
 
-    def _set_system_mode(self, mode: str) -> None:
+    def _set_system_mode(self, mode: str, reason: str) -> None:
         if mode == self.system_mode:
             return
         previous, self.system_mode = self.system_mode, mode
@@ -367,7 +369,7 @@ class Gw01Lite:
             {
                 "code": "SYSTEM_MODE_CHANGED",
                 "severity": _MODE_SEVERITY.get(mode, "info"),
-                "detail": {"from": previous, "to": mode},
+                "detail": {"from": previous, "to": mode, "reason": reason},
             },
         )
         self._publish(KIND_STATE, self._state_payload("online"))
@@ -386,7 +388,7 @@ class Gw01Lite:
             if record.status == "accepted" and record.done_at is not None and now >= record.done_at:
                 record.status = "failed" if record.result == "failed" else "done"
                 if record.result == "approve":
-                    self._set_system_mode(NORMAL_MODE)
+                    self._set_system_mode(NORMAL_MODE, APPROVED_BY_REQUEST)
                 self._respond(record)
 
     def _purge_requests(self, now: datetime) -> None:
