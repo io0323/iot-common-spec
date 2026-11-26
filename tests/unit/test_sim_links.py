@@ -860,3 +860,34 @@ def test_gw_publishes_rejected_fan_override_ack_without_applied() -> None:
         "limited": False,
         "reason": "unsafe",
     }
+
+
+def test_gw_publishes_quality_counts_and_host_monitor_telemetry() -> None:
+    """#45：品質の件数（60秒、count）と自己監視（10秒）を別々の telemetry で発行する。"""
+    gw, clock = _gw()
+    gw.start()
+    (state,) = [o for o in gw.drain() if o.kind == c.KIND_STATE]
+    channels = {ch["channel"]: ch for ch in state.message["payload"]["channels"]}  # type: ignore[index]
+    assert len(channels) == 12
+    assert channels["mqtt_gaps"]["unit"] == "count" and channels["mqtt_gaps"]["period_ms"] == 60000
+    assert channels["cpu_temp"]["unit"] == "degC" and channels["cpu_temp"]["period_ms"] == 10000
+    # 不正な request を1件数えておく（mqtt_rejected）
+    gw.handle_message(gw.topic(c.KIND_REQUEST, c.DEVICE_APP_01), b"{not json")
+    published: list[tuple[int, list[str]]] = []
+    for second in range(1, 61):
+        clock.advance(1)
+        gw.tick()
+        for o in gw.drain():
+            if o.kind == c.KIND_TELEMETRY:
+                assert validate(o.message) == [], o.message
+                readings = o.message["payload"]["readings"]  # type: ignore[index]
+                published.append((second, [r["channel"] for r in readings]))
+                if readings[0]["unit"] == "count":
+                    counts = {r["channel"]: r["value"] for r in readings}
+                    assert counts["mqtt_rejected"] == 1
+                    assert all(isinstance(v, int) and v >= 0 for v in counts.values())
+    host = [s for s, chs in published if "cpu_temp" in chs]
+    quality = [s for s, chs in published if "mqtt_gaps" in chs]
+    assert host == [10, 20, 30, 40, 50, 60]
+    assert quality == [60]
+    assert all(len(chs) in (4, 8) for _, chs in published)  # 2種類を混ぜない

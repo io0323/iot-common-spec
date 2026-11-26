@@ -32,6 +32,7 @@ from iotspec.constants import (
     KIND_REQUEST,
     KIND_REQUEST_ACK,
     KIND_STATE,
+    KIND_TELEMETRY,
     QOS_BY_KIND,
     REQUEST_DEDUP_TTL_S,
     RETAIN_KINDS,
@@ -50,13 +51,31 @@ from iotspec.profile import Profile
 from iotspec.schema import validate
 from iotspec.sim.devices import Outgoing
 from iotspec.sim.scenario import Fault
-from iotspec.uart.bridge import CommandRejected, UartBridge
+from iotspec.uart.bridge import NOT_CONVERTED, CommandRejected, UartBridge
 from iotspec.uart.frames import encode_frame
 
 __all__ = ["CmdRecord", "Gw01Lite", "RequestRecord"]
 
 DEFAULT_DONE_AFTER_S: Final = 1.0
 FW_VERSION: Final = "sim-gw-0.2"
+QUALITY_COUNT_CHANNELS: Final = (
+    "mqtt_rejected",
+    "mqtt_duplicates",
+    "mqtt_gaps",
+    "mqtt_clock_skew",
+    "mqtt_late",
+    "stale_transitions",
+    "uart_discarded",
+    "queue_dropped",
+)
+"""品質の件数（v0.2.3 #45、unit count、60秒ごと）。"""
+HOST_VALUES: Final[dict[str, float]] = {
+    "cpu_temp": 45.0,
+    "cpu_usage": 10.0,
+    "mem_used": 30.0,
+    "disk_used": 20.0,
+}
+"""自己監視（FR-06、10秒ごと）。簡易版は決まった値を送る（実機の値は作品03 が測る）。"""
 
 
 @dataclass
@@ -132,6 +151,7 @@ class Gw01Lite:
         self._last_uart_rx: datetime | None = None
         self._uart_online: bool | None = None
         self._started = clock.now()
+        self._own_telemetry_at: dict[str, datetime] = {}
 
     # ------------------------------------------------------------ 共通
 
@@ -169,10 +189,51 @@ class Gw01Lite:
         return {
             "status": status,
             "mode": "normal",
-            "channels": [],
+            "channels": [
+                {"channel": c.channel, "unit": c.unit, "period_ms": c.period_ms}
+                for c in self.profile.channels
+            ],
             "actuators": [],
             "fw_version": FW_VERSION,
         }
+
+    def _period(self, channels: Iterable[str]) -> timedelta | None:
+        """チャネルの組の周期（プロファイルの period_ms）。無ければ None（発行しない）。"""
+        periods = [c.period_ms for c in self.profile.channels if c.channel in set(channels)]
+        return timedelta(milliseconds=min(periods)) if periods else None
+
+    def _quality_counts(self) -> dict[str, int]:
+        """品質の件数（簡易版の数え方：要求の不正・重複と、UART で捨てたフレーム）。"""
+        uart_discarded = 0
+        if self.bridge is not None:
+            uart_discarded = sum(
+                n for reason, n in self.bridge.discards.items() if reason != NOT_CONVERTED
+            )
+        counts = dict.fromkeys(QUALITY_COUNT_CHANNELS, 0)
+        counts["mqtt_rejected"] = self.stats["invalid_request"]
+        counts["mqtt_duplicates"] = self.stats["duplicate_request"]
+        counts["uart_discarded"] = uart_discarded
+        return counts
+
+    def _publish_own_telemetry(self, now: datetime) -> None:
+        """品質の件数と自己監視を、それぞれの周期で別々の telemetry で発行する（#45）。"""
+        units = {c.channel: c.unit for c in self.profile.channels}
+        groups: list[tuple[str, dict[str, float | int]]] = [
+            ("counts", dict(self._quality_counts())),
+            ("host", dict(HOST_VALUES)),
+        ]
+        for name, values in groups:
+            period = self._period(values)
+            last = self._own_telemetry_at.get(name, self._started)
+            if period is None or now - last < period:
+                continue
+            self._own_telemetry_at[name] = now
+            readings = [
+                {"channel": ch, "value": value, "unit": units[ch], "quality": "good"}
+                for ch, value in values.items()
+                if ch in units
+            ]
+            self._publish(KIND_TELEMETRY, {"readings": readings})
 
     def _publish(
         self, kind: str, payload: Mapping[str, Any], topic_device: str | None = None
@@ -191,8 +252,9 @@ class Gw01Lite:
         self._publish(KIND_STATE, self._state_payload("online"))
 
     def tick(self) -> None:
-        """1秒ごと：request の最終結果、UART の HEARTBEAT・指令の送信と再送、作品01の生存確認。"""
+        """1秒ごと：request の結果、自分の telemetry、UART の HEARTBEAT・指令、生存確認。"""
         self._complete_requests()
+        self._publish_own_telemetry(self.clock.now())
         if self.bridge is not None:
             self._uart_tick()
 

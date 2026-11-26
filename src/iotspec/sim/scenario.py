@@ -60,6 +60,8 @@ _TYPE_OPTIONS = {
     "gw_01_lite": frozenset({"uart_path", "uart_commands", "request_rules"}),
     "app_01": frozenset({"requests"}),
 }
+_SIGNAL_TYPES = frozenset({"mcu_cpp_01", "mcu_c_01"})
+"""signals から計測値を作る代役の型。"""
 _DEFAULT_SPEED = 1.0
 _DEFAULT_SEED = 0
 
@@ -142,8 +144,10 @@ def parse_scenario(data: Any, source: str = "<scenario>") -> Scenario:
         for ch in raw.get("signals", {}):
             if ch not in channels:
                 problems.append(f"/devices/{i}/signals/{ch}: プロファイルにないチャネル")
-        for missing in sorted(channels - set(raw.get("signals", {}))):
-            problems.append(f"/devices/{i}/signals: {missing} の信号がない")
+        # 信号から値を作る代役だけ全チャネルの信号が要る（gw-01 簡易版は値を自分で作る）
+        if raw["type"] in _SIGNAL_TYPES:
+            for missing in sorted(channels - set(raw.get("signals", {}))):
+                problems.append(f"/devices/{i}/signals: {missing} の信号がない")
         for act in raw.get("local_rules", {}):
             if profile.actuator(act) is None:
                 problems.append(

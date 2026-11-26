@@ -1,5 +1,20 @@
-# 作品03（C++ × Raspberry Pi、ゲートウェイ）の簡易版のプロファイル。計測値と出力は持たない
+# 作品03（C++ × Raspberry Pi、ゲートウェイ）のプロファイル（v0.2.3 #45）。出力（actuators）は持たない。
+# telemetry は2種類を別々に発行する：品質の件数（60秒ごと、unit count）と自己監視（FR-06、10秒ごと）
 device_id: gw-01
 transport: mqtt
-channels: []
+channels:
+  # 品質の件数（第5章「件数の公開」。起動からの累積、boot_id ごとに 0 から）
+  - {channel: mqtt_rejected, unit: count, period_ms: 60000}       # スキーマ違反・JSON 不正・未知の schema で捨てた
+  - {channel: mqtt_duplicates, unit: count, period_ms: 60000}     # 重複で捨てた
+  - {channel: mqtt_gaps, unit: count, period_ms: 60000}           # 欠損（同じ boot_id 内の seq の飛び）
+  - {channel: mqtt_clock_skew, unit: count, period_ms: 60000}     # 時刻ずれで ts を置き換えた
+  - {channel: mqtt_late, unit: count, period_ms: 60000}           # 遅延到着で最新値を更新しなかった
+  - {channel: stale_transitions, unit: count, period_ms: 60000}   # チャネルが stale になった回数
+  - {channel: uart_discarded, unit: count, period_ms: 60000}      # UART で捨てたフレーム（not_converted は含めない）
+  - {channel: queue_dropped, unit: count, period_ms: 60000}       # キュー・切断中の保持で捨てた電文
+  # 自己監視（FR-06。HOST_RESOURCE_HIGH／NORMAL の判定に使う）
+  - {channel: cpu_temp, unit: degC, period_ms: 10000}
+  - {channel: cpu_usage, unit: pct, period_ms: 10000}
+  - {channel: mem_used, unit: pct, period_ms: 10000}
+  - {channel: disk_used, unit: pct, period_ms: 10000}
 actuators: []
