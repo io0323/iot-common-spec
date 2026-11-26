@@ -839,3 +839,24 @@ def test_gw_get_diag_keeps_history_and_publishes_nothing() -> None:
     acks = [o.message["payload"] for o in gw.drain() if o.kind == c.KIND_CMD_ACK]
     assert record.cmd_id not in {a["cmd_id"] for a in acks}  # type: ignore[index]
     assert not [d for d in gw.diag_history if "cmd_id" in d]
+
+
+def test_gw_publishes_rejected_fan_override_ack_without_applied() -> None:
+    """#44（v0.2.2）：gw-01 簡易版が発行する cmd/ack も、rejected なら applied なし。"""
+    gw, clock = _gw()
+    gw.feed_uart(encode_frame(State(0, 0x0102, 1, 1000)))
+    gw.drain()
+    record = gw.submit_uart(
+        {"op": "set_actuator", "args": {"id": "fan_main", "level": 300}, "lease_s": 30}
+    )
+    clock.advance(1)
+    gw.tick()
+    (cmd,) = _cmds(gw.drain_uart())
+    gw.feed_uart(encode_frame(Ack(0, cmd.cmd_ref, 2, 1, 0, 0)))  # rejected unsafe
+    (ack,) = [o for o in gw.drain() if o.kind == c.KIND_CMD_ACK]
+    assert ack.message["payload"] == {  # type: ignore[comparison-overlap]
+        "cmd_id": record.cmd_id,
+        "status": "rejected",
+        "limited": False,
+        "reason": "unsafe",
+    }

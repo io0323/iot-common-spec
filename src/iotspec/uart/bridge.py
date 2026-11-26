@@ -19,7 +19,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Final
 
 from iotspec.clock import Clock, format_ts
 from iotspec.constants import (
@@ -80,6 +80,8 @@ TELEMETRY_ACTUATOR = "fan_main"
 TEMP_SCALE = 100  # temp_c100 ÷ 100 = degC
 _UART_SEQ_MAX = UART_SEQ_MODULO - 1
 _NO_LEASE_TTL_S = 0  # リースを持たない op の ttl_s（open-questions #21）
+APPLIED_STATUSES: Final = frozenset({"accepted", "done"})
+"""cmd/ack に applied を付ける status（v0.2.2 #44）。"""
 _BOOT_CODE = EVENT_CODE.to_uart("BOOT")
 NOT_CONVERTED = "not_converted"
 """MQTT に変換しないフレームの破棄理由（DIAG と内部の操作の ACK。v0.2.2 #37）。"""
@@ -370,7 +372,10 @@ class UartBridge:
             "limited": bool(frame.limited),
             "reason": REASON.to_common(frame.reason),
         }
-        if uart_op == UART_OP_SET_FAN_OVERRIDE:
+        # applied は出力を扱う op で、指令を受け付けた・実行したときだけ付ける（#19、v0.2.2 #44）。
+        # rejected・failed では ACK の applied の値によらず付けない
+        # （受信側に「出力が0になった」と読まれないため）
+        if uart_op == UART_OP_SET_FAN_OVERRIDE and payload["status"] in APPLIED_STATUSES:
             payload["applied"] = {"level": frame.applied}
         return self._envelope(KIND_CMD_ACK, seq, payload, None)
 
