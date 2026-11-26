@@ -291,7 +291,7 @@ JSON上の値は浮動小数点数で、上記の単位そのものを表す（�
 - **デバイスプロファイル**：STATEフレームにないstateの必須項目（`mode`・`channels[]`・`actuators[]`）は、デバイスプロファイル `profiles/{device_id}.yaml` から補う。`channels[].period_ms` はSTATEの `period_ms` を優先する。`mode` は直近のTELEMETRYの `state` を状態名にしたもの（受信前は `INIT`）。状態番号と状態名の対応、汎用指令とUARTのopの対応もプロファイルで定める
 - **状態名**：TELEMETRYの `state` はtelemetryの任意項目 `device_state` に、EVENTの `from`・`to` はeventの `detail.from_state`・`detail.to_state` に、いずれもプロファイルの状態名で入れる
 - **fw_version**：`fw_version:u16` は上位バイト＝メジャー、下位バイト＝マイナーで `"{major}.{minor}"` とする（例：`0x0102` → `"1.2"`）
-- **applied**：ACKの `applied:u16` は、出力を扱うop（SET_FAN_OVERRIDE）のときだけcmd/ackの `applied` に `{"level": n}` として入れる。それ以外のopでは `applied` を付けない
+- **applied**：ACKの `applied:u16` は、出力を扱うop（SET_FAN_OVERRIDE）のときだけcmd/ackの `applied` に `{"level": n}` として入れる。それ以外のopでは `applied` を付けない（v0.2.2で、SET_FAN_OVERRIDE でも status が accepted・done のときだけに改めた。下の「変換の決め事（v0.2.2）」）
 - **ttl_s**：リースを持たないop（CLEAR_OVERRIDE・SET_THRESHOLD・GET_STATUS・GET_DIAG）のCMDでは `ttl_s` を0にし、受けた側は無視する
 - **変換できない値**：対応表やプロファイルにない値を含むフレームと、変換結果がJSON Schemaに合わないフレームは、フレームごと破棄して理由ごとに件数を数える（第5章「値の形式不正」）。作品01はrejected・failedのACKでは必ず `reason` を入れる
 - **STATE待ち**：起動直後と再起動の検知後は、新しいSTATEを受けるまでTELEMETRY・EVENT・ACKを変換せずに破棄する（TELEMETRYの破棄件数は記録する）。このため作品01は起動後に STATE → BOOTイベント の順に送る
@@ -305,7 +305,8 @@ STATEが破損で失われた場合に備え、作品03は `uptime_ms` が減っ
 - **GET_DIAGのACK**（#37）：GET_DIAG は作品03の内部の操作で、汎用指令との対応はない。作品03はその `cmd_ref` を覚えておき、ACKを `cmd/ack` に変換しない（`not_converted`）
 - **BOOTのリセット要因**（#38）：UARTのEVENT code 1（BOOT）に限り、`from` を reset_reason（下表）、`to` を 0 とする。MQTTのeventでは、BOOTのときに限り `detail` を `{"reset_reason": "<文字列>"}` だけにする（`from_state`・`to_state` は付けない）。`to` が0でないBOOTと、表にないreset_reasonは変換できない値として破棄する
 - **INTERLOCK**（#39）：EVENT code 9 INTERLOCK_ACTIVE（warning）、10 INTERLOCK_RELEASED（info）。`from`・`to` はその時点の状態番号（同じ値）で、MQTTでは他のEVENTと同じく `detail.from_state`・`detail.to_state` に入れる。作品01は、状態によるファンの下限で手動指定の値を引き上げ始めたときに ACTIVE、引き上げをやめたとき（指定の解除・期限切れ・上位断、状態が下がった、下限以上の指定に置き換わった）に RELEASED を送る
-- **ttl_sとexpired**（#40）：作品01は `expired` を返さない（`reason` の値としては残す）。SET_FAN_OVERRIDE の `ttl_s` は1〜600で、範囲外は rejected（invalid_arg）。`expires_at` を過ぎた指令は、作品03がUARTに送らずに終える。このとき作品03は `mcu-c-01` 名義の `cmd/ack` を作らない（`cmd/ack` の `seq` はUARTのACKから作るため）。結果は要求元への `request/ack`（rejected、reason `expired`）と履歴で伝える。期限の検査は最初の送信の前に行う（再送の前には行わない。#43 の仮実装）
+- **applied（v0.2.2で変更）**（#44）：SET_FAN_OVERRIDE のACKを変換するとき、`status` が accepted・done のときだけcmd/ackに `applied: {"level": n}` を付ける。rejected・failed では `applied` を付けない（指令は実行されていないので、受信側が「ファンが0になった」と読まないようにする）。このときACKの `applied:u16` の値は問わない（作品01は何を入れてもよい）。この決め事はUARTの変換（作品03）にだけ適用する。MQTTで直接cmd/ackを送るデバイス（作品02）の電文は対象外で、JSON Schemaも rejected・failed の `applied` を禁止しない
+- **ttl_sとexpired**（#40）：作品01は `expired` を返さない（`reason` の値としては残す）。SET_FAN_OVERRIDE の `ttl_s` は1〜600で、範囲外は rejected（invalid_arg）。`expires_at` を過ぎた指令は、作品03がUARTに送らずに終える。このとき作品03は `mcu-c-01` 名義の `cmd/ack` を作らない（`cmd/ack` の `seq` はUARTのACKから作るため）。結果は要求元への `request/ack`（rejected、reason `expired`）と履歴で伝える。期限の検査は最初の送信の前だけに行い、再送の前には行わない。1回送ったあとは作品01が実行している可能性があり、再送の途中で期限を過ぎても作品01のリース（`ttl_s`）が出力を止めるため（#43、v0.2.2で確定）
 
 ### 状態遷移とEVENT（v0.2.2）
 
@@ -323,7 +324,7 @@ STATEが破損で失われた場合に備え、作品03は `uptime_ms` が減っ
 | 上位断・復帰 | 7 UPSTREAM_LOST／8 UPSTREAM_RESTORED | warning／info（from・to は現在の状態） |
 | 下限による手動指定の引き上げの開始・終了 | 9 INTERLOCK_ACTIVE／10 INTERLOCK_RELEASED | warning／info（from・to は現在の状態） |
 
-BOOT・UPSTREAM・INTERLOCK は状態遷移ではないので、上の「1件」に数えない。状態遷移と同時に下限での引き上げが始まる・終わるときは、遷移のEVENTの後にINTERLOCKを送る（from・to は遷移後の状態。送る契機と順序は open-questions #42 の仮実装）。
+BOOT・UPSTREAM・INTERLOCK は状態遷移ではないので、上の「1件」に数えない。状態遷移と同時に下限での引き上げが始まる・終わるときは、遷移のEVENTの後にINTERLOCKを送る（from・to は遷移後の状態）。SET_FAN_OVERRIDE を受けた時点で下限に引き上げたときは、ACKの後にINTERLOCK_ACTIVEを送る（ACKは指令への応答なので先に返す）。INTERLOCK_RELEASED は、下限による引き上げが終わったとき（指定の解除・期限切れ・上位断、状態が下がった、下限以上の指定に置き換わった）のすべてで送る（open-questions #42、v0.2.2で確定）。
 
 ### 値の対応表
 

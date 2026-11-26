@@ -467,6 +467,30 @@ def test_bridge_ack_applied_only_for_output_op() -> None:
     assert validate(a.to_dict()) == validate(b.to_dict()) == []
 
 
+@pytest.mark.parametrize(
+    ("status", "reason", "has_applied"),
+    [(0, 0, True), (1, 0, True), (2, 2, False), (3, 5, False)],
+    ids=["accepted", "done", "rejected", "failed"],
+)
+def test_bridge_set_fan_override_applied_only_when_accepted_or_done(
+    status: int, reason: int, has_applied: bool
+) -> None:
+    """#44（v0.2.2）：rejected・failed の SET_FAN_OVERRIDE の cmd/ack には applied を付けない。"""
+    bridge, _ = _booted()
+    cmd = {
+        "cmd_id": "01JD3R0A5K7M2N4P6R8T0V2X4Y",
+        "op": "set_actuator",
+        "args": {"id": "fan_main", "level": 900},
+    }
+    assert isinstance(bridge.command_to_frame(cmd, 20), Cmd)
+    # ACK の applied（ここでは 777）が何であっても、付けるかどうかは status だけで決まる
+    (env,) = bridge.receive(Ack(1, 20, status, reason, 0, 777)).envelopes
+    assert ("applied" in env.payload) is has_applied
+    if has_applied:
+        assert env.payload["applied"] == {"level": 777}
+    assert validate(env.to_dict()) == []
+
+
 @given(st.builds(Diag, u16, u32, u8, u16, u16, u16, u16, u16))
 def test_diag_round_trip(frame: Diag) -> None:
     """v0.2.2 #37：DIAG はペイロード15バイト（u32, u8, u16 ×5）。"""

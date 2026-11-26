@@ -2,7 +2,7 @@
   "name": "ack_rejected_invalid_arg",
   "order": 17,
   "direction": "01->03",
-  "description": "ACK rejected invalid_arg（ttl_s 範囲外の SET_FAN_OVERRIDE、v0.2.2 #40）、limited なし、applied 0 → cmd/ack の applied {level: 0}",
+  "description": "ACK rejected invalid_arg（ttl_s 範囲外の SET_FAN_OVERRIDE、v0.2.2 #40）、limited なし。rejected なので cmd/ack に applied を付けない（v0.2.2 #44）",
   "frame": {
     "type": "ACK",
     "type_code": 17,
@@ -28,10 +28,7 @@
         "cmd_id": "01JD3R0B5K7M2N4P6R8T0V2X4Y",
         "status": "rejected",
         "limited": false,
-        "reason": "invalid_arg",
-        "applied": {
-          "level": 0
-        }
+        "reason": "invalid_arg"
       }
     },
     "discarded": null,

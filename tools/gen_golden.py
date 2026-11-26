@@ -248,8 +248,8 @@ def build_session() -> list[Golden]:
     )
     s.rx(
         "ack_rejected_invalid_arg",
-        "ACK rejected invalid_arg（ttl_s 範囲外の SET_FAN_OVERRIDE、v0.2.2 #40）、limited なし、"
-        "applied 0 → cmd/ack の applied {level: 0}",
+        "ACK rejected invalid_arg（ttl_s 範囲外の SET_FAN_OVERRIDE、v0.2.2 #40）、limited なし。"
+        "rejected なので cmd/ack に applied を付けない（v0.2.2 #44）",
         Ack(1, 0xFFFF, 2, 2, 0, 0),
     )
     s.rx(

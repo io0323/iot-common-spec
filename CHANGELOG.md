@@ -6,7 +6,7 @@
 **トピックのメジャー版は `v1` のまま**で、変更はすべて UART の種別・コード値と Schema の項目の追加です。
 v0.2.1 の電文は v0.2.2 の Schema でもすべて通ります。
 
-### 決定（[docs/open-questions.md](docs/open-questions.md) の #37〜#41）
+### 決定（[docs/open-questions.md](docs/open-questions.md) の #37〜#44）
 
 - **DIAG**（#37、CR-1）：UART に種別 DIAG（0x05、01→03、15バイト）を新設。作品01は GET_DIAG に DIAG → ACK(done) の順で返す。
   作品03は DIAG を MQTT に変換せず（破棄理由 `not_converted`）、履歴に残す。GET_DIAG は作品03の内部の操作で、その ACK も
@@ -19,13 +19,18 @@ v0.2.1 の電文は v0.2.2 の Schema でもすべて通ります。
 - **状態遷移と EVENT**（#41、CR-5）：1回の状態遷移につき EVENT は1件。遷移→コードの表を spec.md 第7章に追加
 - 代役 mcu-c-01 の内部の値を作品01の設計書に合わせた（#32 に追記）：しきい値 45／60／3℃、CRITICAL・SENSOR_FAULT の承認、
   状態ごとのファンの下限と limited、SET_THRESHOLD の拒否条件、1遷移1件の EVENT
-- 仮実装：INTERLOCK を送る契機と順序（#42）、expires_at を検査するのは最初の送信の前だけ（#43）。
-  未決：rejected の SET_FAN_OVERRIDE の cmd/ack に付く applied（#44、v0.2.2 では変えない）
+- **INTERLOCK の契機と順序**（#42）：状態遷移と同時のときは遷移の EVENT の後に送り、「1遷移1件」には数えない。
+  SET_FAN_OVERRIDE を受けた時点で下限に引き上げたときは ACK の後に ACTIVE。RELEASED は引き上げが終わったときすべて
+- **expires_at の検査**（#43）：最初の送信の前だけ。再送の前には検査しない（作品03も同じ）
+- **applied**（#44）：SET_FAN_OVERRIDE の ACK を変換するとき、status が accepted・done のときだけ cmd/ack に
+  `applied: {"level": n}` を付ける。rejected・failed では付けない（ACK の applied の値は問わない）。UART の変換にだけ適用し、
+  JSON Schema（cmd_ack）は厳しくしない（MQTT で直接 ack を送る作品02の電文は変わらない）。v0.2.1 の変換からの変更だが、
+  影響はゴールデン17番に閉じる（rejected・failed の ACK を含むゴールデンは17番だけ）
 
 ### ゴールデン（`uart/golden/`、27件 → 35件）
 
 - 変更：17番 `ack_rejected_expired` → `ack_rejected_invalid_arg`（ttl_s 範囲外の SET_FAN_OVERRIDE への ACK。cmd_ref 0xFFFF、
-  reason invalid_arg）。17番以外の01〜27番は変わっていません
+  reason invalid_arg）。#44 により変換後の cmd/ack に applied は付きません。17番以外の01〜27番は変わっていません
 - 追加（同じセッションの続き）：28 `cmd_set_fan_override_ttl_max`（ttl_s 600）、29 `cmd_get_diag_internal`、30 `diag`
   （`expected.diag` に各項目）、31 `ack_get_diag_done`（not_converted）、32 `state_reboot_watchdog`、33 `event_boot_watchdog`
   （reset_reason watchdog）、34 `event_interlock_active`、35 `event_interlock_released`
@@ -41,9 +46,14 @@ v0.2.1 の電文は v0.2.2 の Schema でもすべて通ります。
 
 ### 各作品への影響
 
-- 作品01：GET_DIAG に DIAG を返す、BOOT の from に reset_reason、INTERLOCK（code 9・10）を送る、ゴールデン35件
-- 作品03：DIAG・GET_DIAG の ACK を変換しない、BOOT の detail、expires_at を過ぎた指令を送らない
-- 作品04：BOOT の `detail.reset_reason`、INTERLOCK_ACTIVE／RELEASED を mcu-c-01 からも受ける
+- 作品01：GET_DIAG に DIAG を返す、BOOT の from に reset_reason、INTERLOCK（code 9・10）を送る、ゴールデン35件。
+  INTERLOCK は遷移の EVENT の後・ACK の後に送り、RELEASED は引き上げが終わったときすべてで送る（#42）。
+  rejected・failed の ACK の applied は何を入れてもよい（#44。ゴールデン17番の期待値は applied なし）
+- 作品03：DIAG・GET_DIAG の ACK を変換しない、BOOT の detail、expires_at を過ぎた指令を送らない（検査は最初の送信の前だけ。#43）。
+  rejected・failed の SET_FAN_OVERRIDE の cmd/ack に applied を付けない（#44）
+- 作品04：BOOT の `detail.reset_reason`、INTERLOCK_ACTIVE／RELEASED を mcu-c-01 からも受ける。
+  cmd/ack の applied は accepted・done のときだけ付くので、rejected・failed の ack から出力の値を読まない（#44）
+- 作品02：変更なし（MQTT で直接送る cmd/ack には #44 を適用しない）
 
 ## v0.2.1（初回リリース、2026-11-20）
 
