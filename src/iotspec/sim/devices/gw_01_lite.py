@@ -58,6 +58,10 @@ __all__ = ["CmdRecord", "Gw01Lite", "RequestRecord"]
 
 DEFAULT_DONE_AFTER_S: Final = 1.0
 FW_VERSION: Final = "sim-gw-0.2"
+NORMAL_MODE: Final = "NORMAL"
+"""EMERGENCY の解除の承認で戻すモード（v0.2.3 #46）。"""
+_MODE_SEVERITY: Final = {"NORMAL": "info", "ALERT": "warning", "EMERGENCY": "critical"}
+"""SYSTEM_MODE_CHANGED の重大度（遷移先に従う。代役の選択）。"""
 QUALITY_COUNT_CHANNELS: Final = (
     "mqtt_rejected",
     "mqtt_duplicates",
@@ -123,8 +127,14 @@ class Gw01Lite:
         request_rules: Iterable[Mapping[str, Any]] = (),
         faults: Iterable[Fault] = (),
         boot_id: str | None = None,
+        initial_mode: str | None = None,
+        emergency_condition_until: datetime | None = None,
     ) -> None:
         self.profile = profile
+        self.system_mode: str = initial_mode or (profile.modes[0] if profile.modes else NORMAL_MODE)
+        """システムのモード（NORMAL・ALERT・EMERGENCY。v0.2.3 #46）。"""
+        self.emergency_condition_until = emergency_condition_until
+        """この時刻まで EMERGENCY の条件が回復していない（承認は unsafe）。None は回復済み。"""
         self.device_id = profile.device_id
         self.clock = clock
         self.site = site
@@ -188,7 +198,7 @@ class Gw01Lite:
     def _state_payload(self, status: str) -> dict[str, Any]:
         return {
             "status": status,
-            "mode": "normal",
+            "mode": self.system_mode,
             "channels": [
                 {"channel": c.channel, "unit": c.unit, "period_ms": c.period_ms}
                 for c in self.profile.channels
@@ -291,6 +301,8 @@ class Gw01Lite:
             if "actuator" in rule and rule["actuator"] != args.get("id"):
                 continue
             return rule
+        if request["target"] == self.device_id and request["op"] == "set_mode":
+            return {"result": "system_mode"}
         if self.bridge is not None and request["target"] == self.bridge.profile.device_id:
             return {"result": "uart"}
         return {"result": "done"}
@@ -312,6 +324,8 @@ class Gw01Lite:
             return
         if record.result == "rejected":
             record.status = "rejected"
+        elif record.result == "system_mode":
+            self._on_mode_request(record, request, now)
         elif record.result == "uart":
             # UART のデバイス宛て：作品03と同じく指令に変えて送り、ACK で最終結果を返す
             payload = {k: request[k] for k in ("op", "args", "lease_s") if k in request}
@@ -327,6 +341,37 @@ class Gw01Lite:
             record.done_at = now + timedelta(seconds=delay)
         self._respond(record)
 
+    def _on_mode_request(
+        self, record: RequestRecord, request: Mapping[str, Any], now: datetime
+    ) -> None:
+        """gw-01 宛ての set_mode：EMERGENCY の解除の承認（v0.2.3 #46）。"""
+        mode = (request.get("args") or {}).get("mode")
+        recovered = self.emergency_condition_until is None or now >= self.emergency_condition_until
+        if mode != NORMAL_MODE:
+            record.status, record.reason = "rejected", "not_permitted"
+        elif not recovered:
+            record.status, record.reason = "rejected", "unsafe"
+        else:
+            # 承認の処理を表す ULID を cmd_id に入れる（accepted・done では cmd_id が必須。#7）
+            record.status = "accepted"
+            record.cmd_id = new_ulid(self.clock)
+            record.done_at = now
+            record.result = "approve"
+
+    def _set_system_mode(self, mode: str) -> None:
+        if mode == self.system_mode:
+            return
+        previous, self.system_mode = self.system_mode, mode
+        self._publish(
+            KIND_EVENT,
+            {
+                "code": "SYSTEM_MODE_CHANGED",
+                "severity": _MODE_SEVERITY.get(mode, "info"),
+                "detail": {"from": previous, "to": mode},
+            },
+        )
+        self._publish(KIND_STATE, self._state_payload("online"))
+
     def _respond(self, record: RequestRecord) -> None:
         payload: dict[str, Any] = {"request_id": record.request_id, "status": record.status}
         if record.cmd_id is not None:
@@ -340,6 +385,8 @@ class Gw01Lite:
         for record in self.requests.values():
             if record.status == "accepted" and record.done_at is not None and now >= record.done_at:
                 record.status = "failed" if record.result == "failed" else "done"
+                if record.result == "approve":
+                    self._set_system_mode(NORMAL_MODE)
                 self._respond(record)
 
     def _purge_requests(self, now: datetime) -> None:

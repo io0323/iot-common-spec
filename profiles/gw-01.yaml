@@ -18,3 +18,5 @@ channels:
   - {channel: mem_used, unit: pct, period_ms: 10000}
   - {channel: disk_used, unit: pct, period_ms: 10000}
 actuators: []
+# EMERGENCY の解除の承認は request の set_mode NORMAL（v0.2.3 #46）。NORMAL 以外への set_mode は not_permitted
+modes: [NORMAL, ALERT, EMERGENCY]

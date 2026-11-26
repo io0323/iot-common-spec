@@ -66,6 +66,41 @@
               }
             }
           }
+        },
+        {
+          "description": "RULE_FIRED の detail は {rule_id, message?}（v0.2.3 #47）。重大度は info〜critical（ルールの notify の level）",
+          "if": {
+            "required": [
+              "code"
+            ],
+            "properties": {
+              "code": {
+                "const": "RULE_FIRED"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "detail"
+            ],
+            "properties": {
+              "detail": {
+                "type": "object",
+                "required": [
+                  "rule_id"
+                ],
+                "properties": {
+                  "rule_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
         }
       ]
     }

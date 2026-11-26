@@ -891,3 +891,37 @@ def test_gw_publishes_quality_counts_and_host_monitor_telemetry() -> None:
     assert host == [10, 20, 30, 40, 50, 60]
     assert quality == [60]
     assert all(len(chs) in (4, 8) for _, chs in published)  # 2種類を混ぜない
+
+
+# ---------------------------------------------------------------- #46（v0.2.3）
+
+
+def test_emergency_approval_scenario() -> None:
+    """app-01 → gw-01 の set_mode NORMAL を EMERGENCY の解除の承認として扱う（#46）。"""
+    sim = Simulation(load_scenario("emergency_approval"), speed=0)
+    out = sim.run_batch()
+    app, gw = sim.app, sim.gw
+    assert app is not None and gw is not None
+    results = [(r.payload["args"]["mode"], r.status, r.reason) for r in app.requests.values()]
+    assert results == [
+        ("NORMAL", "rejected", "unsafe"),
+        ("EMERGENCY", "rejected", "not_permitted"),
+        ("NORMAL", "done", None),
+    ]
+    done = list(app.requests.values())[-1]
+    assert [a["status"] for a in done.acks] == ["accepted", "done"]
+    assert done.acks[0]["cmd_id"] == done.acks[1]["cmd_id"]  # 承認の処理の ULID（#7）
+    assert gw.system_mode == "NORMAL"
+    events = [o.message["payload"] for o in out if o.topic.endswith("gw-01/event")]
+    assert [(e["code"], e["severity"]) for e in events] == [("SYSTEM_MODE_CHANGED", "info")]
+    modes = [o.message["payload"]["mode"] for o in out if o.topic.endswith("gw-01/state")]  # type: ignore[index]
+    assert modes == ["EMERGENCY", "NORMAL"]
+    for o in out:
+        assert validate(o.message) == [], o.topic
+
+
+def test_gw_profile_modes_and_default_mode() -> None:
+    profile = load_profile(c.DEVICE_GW_01)
+    assert profile.modes == ("NORMAL", "ALERT", "EMERGENCY")
+    gw, _ = _gw()
+    assert gw.system_mode == "NORMAL"

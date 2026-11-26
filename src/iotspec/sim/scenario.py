@@ -52,12 +52,15 @@ _OPTION_KEYS = frozenset(
         "uart_commands",
         "request_rules",
         "requests",
+        "emergency_condition_until_s",
     }
 )
 _TYPE_OPTIONS = {
     "mcu_cpp_01": frozenset(),
     "mcu_c_01": frozenset({"thresholds", "uart_path", "reset_reason", "acks_at_s"}),
-    "gw_01_lite": frozenset({"uart_path", "uart_commands", "request_rules"}),
+    "gw_01_lite": frozenset(
+        {"uart_path", "uart_commands", "request_rules", "emergency_condition_until_s"}
+    ),
     "app_01": frozenset({"requests"}),
 }
 _SIGNAL_TYPES = frozenset({"mcu_cpp_01", "mcu_c_01"})

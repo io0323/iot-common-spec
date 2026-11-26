@@ -19,7 +19,7 @@ JSON Schema、サンプル電文、UART ゴールデンフレーム、共通シ�
 
 **仕様の正は [docs/spec.md](docs/spec.md) と [schemas/](schemas/) です。**
 spec.md は説明であり、両者が食い違う場合は schemas/ を正とします（spec.md 第1章）。
-仕様に書かれていなかった点の決定は [docs/open-questions.md](docs/open-questions.md) にあります（v0.2.2 で #1〜#44、v0.2.3 で #45 を確定）。
+仕様に書かれていなかった点の決定は [docs/open-questions.md](docs/open-questions.md) にあります（v0.2.2 で #1〜#44、v0.2.3 で #45〜#47 を確定）。
 
 ## 取り込み方
 
@@ -50,11 +50,12 @@ export IOTSPEC_MQTT_PASSWORD=iotspec-dev       # gen_passwd.sh の既定値
 uv run iotspec-sim run normal_day --speed 60                       # 作品02の代役が1日を60倍速で
 uv run iotspec-sim run request_flow                                # 作品04 → 作品03 の要求の流れ
 uv run iotspec-sim run uart_link                                   # 作品03 ⇔ 作品01 を pty でつなぐ
+uv run iotspec-sim run emergency_approval                          # 作品04 → 作品03 の EMERGENCY の解除の承認
 uv run iotspec-sim run normal_day --speed 0 --dump out.jsonl       # ブローカーなしで一括生成
 SCENARIO=normal_day docker compose up sim                          # コンテナで
 ```
 
-シナリオは `sim/scenarios/`（normal_day・sensor_fault・duplicate_and_gap・request_flow・uart_link）。
+シナリオは `sim/scenarios/`（normal_day・sensor_fault・duplicate_and_gap・request_flow・uart_link・emergency_approval）。
 mcu-c-01 だけのシナリオでは pty を作ってパスを表示するので、作品03（または作品01のホスト版の相手）がそこにつなげます。
 既存のシリアルポートを開くときは `--uart PATH` を使います。
 
