@@ -1,6 +1,6 @@
 [project]
 name = "iotspec"
-version = "0.2.2"
+version = "0.2.3"
 description = "iot-common-spec: 作品01〜04 が共有する通信・データ仕様の実体（Schema・サンプル・UART ゴールデン・シミュレータ・契約テスト）"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"

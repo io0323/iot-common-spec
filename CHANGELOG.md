@@ -1,5 +1,33 @@
 # Changelog
 
+## v0.2.3（2026-11-26）
+
+作品03（gw-01）の品質の件数と自己監視を telemetry で公開できるようにしました（作品03 の変更案
+`docs/design/03-common-spec-cr-v0.2.3.md`、[docs/open-questions.md](docs/open-questions.md) #45）。
+**トピックのメジャー版は `v1` のまま**で、変更は単位の列挙への値の追加と、gw-01 のプロファイルのチャネルの追加です。
+v0.2.2 の電文は v0.2.3 の Schema でもすべて通ります。
+
+### 決定（#45）
+
+- 単位に `count` を追加（起動からの累積件数、boot_id ごとに0から）。telemetry の Schema は unit が count のとき value を0以上の整数に制限する
+- `profiles/gw-01.yaml` の channels：品質の件数8つ（count、60秒）と自己監視4つ（cpu_temp〔degC〕・cpu_usage・mem_used・disk_used〔pct〕、10秒）
+- gw-01 は2種類を別々の telemetry で発行する（件数は quality good、取得に失敗した自己監視は fault）
+- HOST_RESOURCE_HIGH・NORMAL の detail は `{channel, value, threshold}`
+
+### そのほか
+
+- spec.md：第2章（単位表、count は整数）、第3章（gw-01 の telemetry）、第5章（件数の公開とチャネルの意味）、第6章（HOST_RESOURCE の detail）
+- samples：valid に `telemetry__gw_quality_counts`・`telemetry__gw_host_monitor`、invalid に `telemetry__count_negative`・`telemetry__count_fractional`
+- gw-01 簡易版：state の channels をプロファイルから出し、件数（60秒）と自己監視（10秒、決まった値）の telemetry を発行する
+- シナリオ：signals を全チャネル分求めるのは、信号から値を作る代役（mcu_cpp_01・mcu_c_01）だけにした
+- UART・ゴールデンの変更はなし（ゴールデンは1バイトも変わらない）
+
+### 各作品への影響
+
+- 作品03：gw-01 の telemetry（件数60秒・自己監視10秒）を発行する。gw-01 の state の channels に12チャネルが載る
+- 作品04：単位 `count` と gw-01 の telemetry を取り込んで表示する。HOST_RESOURCE の detail を読む
+- 作品01・02：なし
+
 ## v0.2.2（2026-11-26）
 
 作品01の実装前レビューで出た変更案 CR-1〜5（作品01 `docs/design/03-common-spec-cr-v0.2.2.md`）を取り込みました。

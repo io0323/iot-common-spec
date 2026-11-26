@@ -46,7 +46,30 @@
               "quality": {
                 "$ref": "common.schema.json#/$defs/quality"
               }
-            }
+            },
+            "allOf": [
+              {
+                "description": "unit が count のときは 0 以上の整数（v0.2.3 #45）",
+                "if": {
+                  "required": [
+                    "unit"
+                  ],
+                  "properties": {
+                    "unit": {
+                      "const": "count"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "value": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  }
+                }
+              }
+            ]
           }
         },
         "device_state": {

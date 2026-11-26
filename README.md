@@ -4,7 +4,7 @@ IoT ポートフォリオ（作品01〜04）が共有する通信・データ仕
 JSON Schema、サンプル電文、UART ゴールデンフレーム、共通シミュレータ、契約テストキットを提供し、
 各作品はこのリポジトリをタグ指定で取り込んで、実機なしで相互接続と契約テストを行います。
 
-- **仕様の版：共通仕様 v0.2（このリポジトリの版は v0.2.2）**。トピックのメジャー版は `v1`
+- **仕様の版：共通仕様 v0.2（このリポジトリの版は v0.2.3）**。トピックのメジャー版は `v1`
 - 対象：MQTT のトピックと JSON ペイロード、作品01⇔作品03 の UART フレーム、共通シミュレータと契約テスト
 - 変更点：[CHANGELOG.md](CHANGELOG.md)
 
@@ -19,13 +19,13 @@ JSON Schema、サンプル電文、UART ゴールデンフレーム、共通シ�
 
 **仕様の正は [docs/spec.md](docs/spec.md) と [schemas/](schemas/) です。**
 spec.md は説明であり、両者が食い違う場合は schemas/ を正とします（spec.md 第1章）。
-仕様に書かれていなかった点の決定は [docs/open-questions.md](docs/open-questions.md) にあります（v0.2.2 で #1〜#44 すべて確定）。
+仕様に書かれていなかった点の決定は [docs/open-questions.md](docs/open-questions.md) にあります（v0.2.2 で #1〜#44、v0.2.3 で #45 を確定）。
 
 ## 取り込み方
 
 ```sh
-uv add "iotspec @ git+https://github.com/io0323/iot-common-spec@v0.2.2"        # ライブラリとして
-uv tool install "iotspec @ git+https://github.com/io0323/iot-common-spec@v0.2.2"  # コマンドだけ
+uv add "iotspec @ git+https://github.com/io0323/iot-common-spec@v0.2.3"        # ライブラリとして
+uv tool install "iotspec @ git+https://github.com/io0323/iot-common-spec@v0.2.3"  # コマンドだけ
 ```
 
 パッケージには Schema・プロファイル・シナリオ・UART ゴールデンが同梱されています。
@@ -72,7 +72,7 @@ role ごとのチェック、対象の起動のしかた、GitHub Actions の例
 
 | パス | 内容 |
 |---|---|
-| `docs/spec.md` | 共通仕様の本文（v0.2、v0.2.1・v0.2.2 の明記を含む） |
+| `docs/spec.md` | 共通仕様の本文（v0.2、v0.2.1〜v0.2.3 の明記を含む） |
 | `docs/open-questions.md` | 仕様に書かれていなかった点と、その決定 |
 | `docs/contract-tests.md` | 契約テストの使い方（他のリポジトリ向け） |
 | `schemas/` | kind ごとの JSON Schema と共通定義（`$defs`）、プロファイル・シナリオの Schema |

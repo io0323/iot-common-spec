@@ -1,6 +1,6 @@
-# 共通仕様 v0.2（iot-common-spec v0.2.2）：作品01〜04 の通信・データ仕様
+# 共通仕様 v0.2（iot-common-spec v0.2.3）：作品01〜04 の通信・データ仕様
 
-2026-11-20 · @io（v0.2.2：2026-11-26）
+2026-11-20 · @io（v0.2.2・v0.2.3：2026-11-26）
 
 ## 1. 目的・適用範囲・版の方針
 
@@ -13,7 +13,7 @@
 ### 版の方針
 
 - 本書の版（v0.2）と、トピックに含めるメジャー版（`v1`）は別物。v0.2は項目の追加だけなのでトピックは `v1` のまま
-- 実体のリリースは v0.2.x で数える。現在は **v0.2.2**（v0.2.1 に UART の DIAG 種別、BOOT のリセット要因、INTERLOCK のコード、ttl_s の範囲、状態遷移と EVENT の表を追加。いずれも項目の追加で、トピックは `v1` のまま。CHANGELOG.md）
+- 実体のリリースは v0.2.x で数える。現在は **v0.2.3**（v0.2.2 で UART の DIAG 種別、BOOT のリセット要因、INTERLOCK のコード、ttl_s の範囲、状態遷移と EVENT の表を、v0.2.3 で単位 `count` と gw-01 の telemetry のチャネルを追加。いずれも項目の追加で、トピックは `v1` のまま。CHANGELOG.md）
 - 受信側は知らない項目を無視する（前方互換）。必須項目の削除や意味の変更をするときだけトピックを `v2` に上げる
 - 各作品はREADMEに対応する仕様の版を書き、`iot-common-spec` をタグ指定で取り込む
 - 変更は `iot-common-spec` へのPull Requestで行い、影響する作品を説明に書く
@@ -50,8 +50,9 @@
 | `pct_rh` | 相対湿度（%） | `lux` | 照度 |
 | `pct` | 割合（土壌水分、CPU使用率など） | `bytes` | 容量 |
 | `level_pm` | アクチュエーター出力（0–1000‰） | `rpm` | 回転数 |
+| `count` | 起動からの累積件数（boot_id ごとに0から。v0.2.3で追加） | | |
 
-JSON上の値は浮動小数点数で、上記の単位そのものを表す（温度なら 41.25）。固定小数への変換は各デバイスの内部で行う。
+JSON上の値は浮動小数点数で、上記の単位そのものを表す（温度なら 41.25）。固定小数への変換は各デバイスの内部で行う。ただし `count` の値は0以上の整数とする（JSON Schemaで検査する。v0.2.3）。
 
 ## 3. 共通エンベロープとペイロード
 
@@ -84,6 +85,15 @@ JSON上の値は浮動小数点数で、上記の単位そのものを表す（�
 | request/ack | 下記 |
 
 `state` に機器一覧と計測周期（`period_ms`）を含める。受信側はこれで機器を自動登録し、stale判定の基準にも使う。
+
+gw-01（作品03）は、計測値の代わりに次の2種類の telemetry を別々に発行する（v0.2.3）。チャネルは `profiles/gw-01.yaml` に定め、gw-01 の state の `channels[]` にも載せる。
+
+| 種類 | チャネル | unit | 周期 |
+|---|---|---|---|
+| 品質の件数（第5章「件数の公開」） | `mqtt_rejected`, `mqtt_duplicates`, `mqtt_gaps`, `mqtt_clock_skew`, `mqtt_late`, `stale_transitions`, `uart_discarded`, `queue_dropped` | `count` | 60秒 |
+| 自己監視（作品03 FR-06） | `cpu_temp`（degC）, `cpu_usage`, `mem_used`, `disk_used`（いずれも pct） | 左のとおり | 10秒 |
+
+品質の件数の `quality` は `good`。自己監視で値を取得できなかったチャネルは `quality: fault` とする。
 
 ### cmd と cmd/ack
 
@@ -223,6 +233,19 @@ JSON上の値は浮動小数点数で、上記の単位そのものを表す（�
 
 破棄や置き換えの件数は、各作品とも状態として公開する（03は `gw-01` のtelemetry、04は `/health`）。
 
+件数の公開（v0.2.3）：03は第3章の8チャネル（unit `count`）を60秒ごとに発行する。値は起動からの累積で、boot_id が変わったら0から数え直す。各チャネルが数えるもの：
+
+| チャネル | 数えるもの |
+|---|---|
+| `mqtt_rejected` | スキーマ違反・JSONとして読めない・未知の schema で捨てた電文 |
+| `mqtt_duplicates` | 重複で捨てた電文 |
+| `mqtt_gaps` | 欠損（同じ boot_id 内の seq の飛び）の数 |
+| `mqtt_clock_skew` | 時刻ずれで ts を置き換えた電文 |
+| `mqtt_late` | 遅延到着で最新値を更新しなかった値 |
+| `stale_transitions` | チャネルが stale になった回数 |
+| `uart_discarded` | UARTで捨てたフレーム（CRC・COBS・STATE待ち・変換できない値など。not_converted は含めない） |
+| `queue_dropped` | キューやブローカー停止中の保持で捨てた電文 |
+
 ## 6. イベントコードと重大度
 
 重大度は `info`／`warning`／`critical` の3段階。異常と復旧は対になるコードを使い、04は対で通知をまとめる。
@@ -242,9 +265,9 @@ JSON上の値は浮動小数点数で、上記の単位そのものを表す（�
 | `COMMAND_FAILED` | warning | 03 | 指令が失敗・タイムアウト | — |
 | `CLOCK_SKEW` | warning | 03、04 | 時刻ずれを検出（第5章） | — |
 | `DATA_DROPPED` | warning | 03、04 | キュー満杯等でデータを破棄（件数を `detail` に） | — |
-| `HOST_RESOURCE_HIGH` | warning／critical | 03 | Raspberry Piの温度・メモリ・ストレージのしきい値超過 | `HOST_RESOURCE_NORMAL` |
+| `HOST_RESOURCE_HIGH` | warning／critical | 03 | Raspberry Piの温度・メモリ・ストレージのしきい値超過。`detail` は `{channel, value, threshold}`（自己監視のチャネル名・値・超えたしきい値。しきい値そのものは作品03の設定。v0.2.3） | `HOST_RESOURCE_NORMAL` |
 
-対になる復旧コード（`THRESHOLD_CLEARED`・`SENSOR_RECOVERED`・`INTERLOCK_RELEASED`・`UPSTREAM_RESTORED`・`DEVICE_ONLINE`・`RULE_CLEARED`・`HOST_RESOURCE_NORMAL`）の重大度は `info` とする（v0.2.1で明記）。
+対になる復旧コード（`THRESHOLD_CLEARED`・`SENSOR_RECOVERED`・`INTERLOCK_RELEASED`・`UPSTREAM_RESTORED`・`DEVICE_ONLINE`・`RULE_CLEARED`・`HOST_RESOURCE_NORMAL`）の重大度は `info` とする（v0.2.1で明記）。`HOST_RESOURCE_NORMAL` の `detail` も `HOST_RESOURCE_HIGH` と同じく `{channel, value, threshold}` とする（v0.2.3）。
 
 コードを追加するときは本表とサンプル電文を同時に更新する。JSON Schemaではコードを列挙せず形式（英大文字とアンダースコア）だけを検査し、受信側は未知のコードも破棄せず重大度に従って扱う。
 

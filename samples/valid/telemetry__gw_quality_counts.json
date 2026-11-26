@@ -1,0 +1,61 @@
+{
+  "schema": "iot.v1.telemetry",
+  "msg_id": "01JDA00000000000000000V101",
+  "device_id": "gw-01",
+  "seq": 5,
+  "boot_id": "7f3a9c01",
+  "ts": "2026-11-26T06:01:00.000Z",
+  "ts_source": "device",
+  "payload": {
+    "readings": [
+      {
+        "channel": "mqtt_rejected",
+        "value": 2,
+        "unit": "count",
+        "quality": "good"
+      },
+      {
+        "channel": "mqtt_duplicates",
+        "value": 3,
+        "unit": "count",
+        "quality": "good"
+      },
+      {
+        "channel": "mqtt_gaps",
+        "value": 33,
+        "unit": "count",
+        "quality": "good"
+      },
+      {
+        "channel": "mqtt_clock_skew",
+        "value": 1,
+        "unit": "count",
+        "quality": "good"
+      },
+      {
+        "channel": "mqtt_late",
+        "value": 0,
+        "unit": "count",
+        "quality": "good"
+      },
+      {
+        "channel": "stale_transitions",
+        "value": 4,
+        "unit": "count",
+        "quality": "good"
+      },
+      {
+        "channel": "uart_discarded",
+        "value": 2,
+        "unit": "count",
+        "quality": "good"
+      },
+      {
+        "channel": "queue_dropped",
+        "value": 0,
+        "unit": "count",
+        "quality": "good"
+      }
+    ]
+  }
+}

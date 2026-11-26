@@ -42,6 +42,8 @@ EXPECTED: dict[str, tuple[str, str]] = {
     "telemetry__bad_quality": ("/payload/readings/1/quality", "enum"),
     "telemetry__unknown_owner": ("/payload/actuators/0/owner", "enum"),
     "telemetry__value_is_string": ("/payload/readings/0/value", "type"),
+    "telemetry__count_negative": ("/payload/readings/0/value", "minimum"),
+    "telemetry__count_fractional": ("/payload/readings/0/value", "type"),
     "telemetry__missing_readings": ("/payload", "required"),
     "telemetry__actuator_level_out_of_range": ("/payload/actuators/1/level", "maximum"),
     "event__lowercase_code": ("/payload/code", "pattern"),
